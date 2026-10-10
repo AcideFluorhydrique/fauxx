@@ -2,6 +2,7 @@ package com.fauxx.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -116,6 +117,12 @@ class TargetingScreenTest {
             }
         }
         // "Rotate Now" renders under the Layer 3 card (enabled by default) — below the fold.
+        // uiState starts from TargetingUiState() (layer3Enabled = false) until its combine()
+        // gets a first value from the Room DAO flows. Compose's idle sync does not track
+        // Room's query executor, so on a slow emulator the button can be absent at first.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Rotate Now").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("Rotate Now").performScrollTo().assertIsDisplayed()
     }
 }
