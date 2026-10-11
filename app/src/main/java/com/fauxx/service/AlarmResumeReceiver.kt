@@ -21,8 +21,8 @@ import timber.log.Timber
  * allowed foreground-service-start contexts, so this can start the `specialUse` FGS with no user
  * interaction — which WorkManager's user-absent [ResumeWorker] cannot, hence it only posts a
  * tap-to-resume notification. The exact-alarm permission ([android.Manifest.permission.USE_EXACT_ALARM])
- * is declared in the full flavor only; on the play flavor the scheduler falls back to the
- * notification path, so this receiver effectively only fires on full.
+ * is declared in the full flavor manifest; if exact alarms are unavailable the scheduler falls
+ * back to the notification path and this receiver does not fire.
  *
  * Ordering matters for the FGS-start grant: the start is done SYNCHRONOUSLY in [onReceive], inside
  * the alarm broadcast, so the grant is unambiguously in scope (deferring it past an async read

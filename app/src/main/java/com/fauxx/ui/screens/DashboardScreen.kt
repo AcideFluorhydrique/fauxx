@@ -83,7 +83,6 @@ fun DashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val showConsent by viewModel.showConsentDialog.collectAsState()
-    val showFullVersionNotice by viewModel.showFullVersionNotice.collectAsState()
     val webViewWarning by viewModel.webViewWarning.collectAsState()
     val customDnsNotice by viewModel.customDnsNotice.collectAsState()
     val samsungSleepGuidanceDismissed by viewModel.samsungSleepGuidanceDismissed.collectAsState()
@@ -175,12 +174,6 @@ fun DashboardScreen(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
-        )
-
-        // Play Store flavor: nudge users toward the full F-Droid / GitHub build.
-        FullVersionNoticeCard(
-            visible = showFullVersionNotice,
-            onDismiss = viewModel::dismissFullVersionNotice
         )
 
         // Notification permission warning

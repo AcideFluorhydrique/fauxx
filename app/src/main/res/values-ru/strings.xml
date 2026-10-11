@@ -99,15 +99,6 @@
     <string name="about_support_body">Если Fauxx тебе полезен, можешь угостить автора кофе.</string>
     <string name="about_support_button">Buy Me a Coffee</string>
 
-    <!-- Play Store flavor: full-version notice -->
-    <string name="full_version_notice_title">Ограниченная сборка Play Store</string>
-    <string name="full_version_notice_body">Чтобы соответствовать правилам Play Store, в этой сборке отключены зашумление рекламного профиля и подмена GPS-локации. Полную версию Fauxx без ограничений можно установить из F-Droid или GitHub.</string>
-    <string name="full_version_notice_fdroid">F-Droid</string>
-    <string name="full_version_notice_github">GitHub</string>
-    <string name="full_version_notice_dismiss">Больше не показывать</string>
-    <string name="full_version_fdroid_url">https://f-droid.org/packages/com.fauxx.full/</string>
-    <string name="full_version_github_url">https://github.com/digital-grease/fauxx/releases</string>
-
     <!-- Settings: app language -->
     <string name="settings_language_title">Язык приложения</string>
     <string name="settings_language_subtitle_system">Используется язык твоего устройства</string>

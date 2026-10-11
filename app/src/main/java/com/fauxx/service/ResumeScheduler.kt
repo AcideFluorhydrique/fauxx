@@ -65,7 +65,7 @@ class ResumeScheduler @Inject constructor(
      * Time-based (quiet-hours) resume. Prefers an EXACT ALARM that auto-starts the FGS at the
      * scheduled time with no user interaction (#126) — an exact-alarm broadcast is an allowed
      * FGS-start context on Android 14+. Falls back to the WorkManager tap-to-resume notification
-     * when exact alarms aren't available (the play flavor, which doesn't declare USE_EXACT_ALARM).
+     * when exact alarms aren't available.
      */
     private fun scheduleAtTime(epochMs: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager

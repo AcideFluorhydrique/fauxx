@@ -94,7 +94,7 @@ class ResumeLoopTest {
     fun `AtTime resume uses an exact alarm and skips workmanager when exact alarms are allowed`() {
         // The full flavor declares USE_EXACT_ALARM, so canScheduleExactAlarms() is true and the
         // AtTime quiet-hours resume auto-starts the FGS via an exact alarm (#126) instead of the
-        // tap-to-resume notification. Force that state here (playDebug has no USE_EXACT_ALARM).
+        // tap-to-resume notification. Force that state here.
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         ShadowAlarmManager.setCanScheduleExactAlarms(true)
         val scheduler = ResumeScheduler(context)

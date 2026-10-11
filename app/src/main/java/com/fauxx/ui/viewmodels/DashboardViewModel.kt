@@ -178,18 +178,6 @@ class DashboardViewModel @Inject constructor(
     private val _showConsentDialog = MutableStateFlow(false)
     val showConsentDialog: StateFlow<Boolean> = _showConsentDialog
 
-    /** Whether the "get full version" notice should be shown (Play flavor only, undismissed). */
-    val showFullVersionNotice: StateFlow<Boolean> = dataStore.data
-        .map { it[PreferenceKeys.FULL_VERSION_NOTICE_DISMISSED] != true }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    /** Persists the user's choice to dismiss the full-version notice. */
-    fun dismissFullVersionNotice() {
-        viewModelScope.launch {
-            dataStore.edit { it[PreferenceKeys.FULL_VERSION_NOTICE_DISMISSED] = true }
-        }
-    }
-
     /**
      * Whether this is a Samsung device whose user has not yet dismissed the sleeping-apps steps
      * (#335). The dashboard also requires protection to be on; see

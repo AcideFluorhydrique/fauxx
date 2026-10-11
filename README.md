@@ -15,7 +15,7 @@ Fauxx is an open-source Android privacy tool that poisons data broker and ad-tec
 
 > 💬 **Looking for the AI usage disclosure?** See [AIUSE.md](https://github.com/digital-grease/fauxx/blob/main/AIUSE.md)
 
-> 📦 **Where to get it:** Fauxx ships via **F-Droid**, **GitHub Releases**, and sideload / Obtainium. **The Google Play build is no longer maintained or published.** Play is too restrictive for Fauxx's full feature set (it disallows the location-spoofing and ad-profile-pollution modules), and it is moving toward requiring the age-verification API, which a no-account privacy tool has no business integrating. The `play` build flavor stays in the source in case that ever changes (CI still debug-compiles and unit-tests it so it doesn't rot unnoticed), but it carries no quality gates and is no longer built, shipped, or allowed to block a release.
+> 📦 **Where to get it:** Fauxx ships via **F-Droid**, **GitHub Releases**, and sideload / Obtainium. **Fauxx is not distributed on Google Play and will not return there.** Play is too restrictive for Fauxx's full feature set (it disallows the location-spoofing and ad-profile-pollution modules), and it is moving toward requiring the age-verification API, which a no-account privacy tool has no business integrating. The former `play` build flavor has been removed from the source.
 
 > 🖥️ **Desktop companion (alpha):** [fauxx-desktop](https://github.com/digital-grease/fauxx-desktop) is a new, early-alpha cross-device privacy command center (a Rust headless core with an Iced GUI). It runs decoy generation on a desktop or homelab box and shares an encrypted, local-only LAN persona-sync protocol with the Android app, so paired devices can keep one coherent persona. It is alpha software, so expect rough edges while it stabilizes.
 
@@ -145,7 +145,7 @@ Fauxx is built with privacy-first architecture:
 git clone https://github.com/digital-grease/fauxx.git
 cd fauxx
 
-# Build the debug APK (the "full" flavor is the one that ships)
+# Build the debug APK ("full" is the only build flavor)
 ./gradlew assembleFullDebug
 
 # Build the release APK (unsigned; sign it with your own key)
@@ -321,7 +321,7 @@ Fauxx ships in English (`en`), Spanish (`es`), French (`fr`) and Russian (`ru`).
 
 **Adding a new locale.** Outline of the work, in order:
 1. Append the locale to the `SupportedLocale` enum (with `tag`, `displayName`, `defaultRegion`, `yahooSubdomainPrefix`).
-2. Translate `app/src/main/res/values/strings.xml` → `values-<localeTag>/`. Same for the play flavor under `app/src/play/res/values/`.
+2. Translate `app/src/main/res/values/strings.xml` → `values-<localeTag>/`.
 3. Draft `assets/harmful_queries/<localeTag>.json`. Class A illegal terms can start as a translation of the English file; the self-signal section must include the region's crisis hotlines (e.g. ES 024, FR 3114, DE 0800-181-0721, etc.) and DV / poison-control numbers. **Native-speaker review is mandatory before this locale ships.** Add a sentinel-presence assertion in `HarmfulQueriesLocaleAuditTest` to lock the regression in.
 4. Curate `assets/persona_templates/<localeTag>.json` (region- and culture-plausible archetypes) and `assets/crawl_urls/<localeTag>.json` (region-appropriate domains across all CategoryPool values).
 5. Add ES/FR/etc. entries to `CATEGORY_APP_KEYWORDS` in `AppSignalModule` (Play Store keywords idiomatic to that storefront).

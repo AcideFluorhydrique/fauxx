@@ -24,16 +24,14 @@
          in the OS permission list and in F-Droid metadata with nothing asking for them at
          runtime, so they were never granted anyway. -->
     <!-- ACCESS_MOCK_LOCATION is declared in src/full/AndroidManifest.xml so the
-         F-Droid build appears in Developer Options → "Select mock location app".
-         Play flavor intentionally omits it (Play Store policy). -->
+         F-Droid build appears in Developer Options → "Select mock location app". -->
 
-    <!-- Foreground service (flavor-specific FGS type permission lives in
-         src/play/AndroidManifest.xml and src/full/AndroidManifest.xml) -->
+    <!-- Foreground service (the FGS type permission lives in src/full/AndroidManifest.xml) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- LAN sync uses specialUse, like the engine (see src/full and src/play overlays, which
-         declare this permission for PhantomForegroundService).
+    <!-- LAN sync uses specialUse, like the engine (see the src/full overlay, which
+         declares this permission for PhantomForegroundService).
 
          It used to be dataSync, on the assumption that a session is short because "the service is
          torn down when the user leaves". That was never true: nothing stops the service when the
@@ -84,9 +82,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Foreground Service. The foregroundServiceType attribute is set per-flavor;
-             both flavors use specialUse + PROPERTY_SPECIAL_USE_FGS_SUBTYPE
-             (set in src/play/AndroidManifest.xml and src/full/AndroidManifest.xml). -->
+        <!-- Foreground Service. The foregroundServiceType attribute (specialUse +
+             PROPERTY_SPECIAL_USE_FGS_SUBTYPE) is set in src/full/AndroidManifest.xml. -->
         <service
             android:name=".service.PhantomForegroundService"
             android:exported="false" />

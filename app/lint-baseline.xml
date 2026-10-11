@@ -3393,28 +3393,6 @@
     <issue
         id="UseKtx"
         message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fdroidUrl)))"
-        errorLine2="                                                                         ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/fauxx/ui/screens/AboutScreen.kt"
-            line="137"
-            column="74"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(githubUrl)))"
-        errorLine2="                                                                         ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/fauxx/ui/screens/AboutScreen.kt"
-            line="145"
-            column="74"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
         errorLine1="                    Intent(Intent.ACTION_VIEW, Uri.parse(&quot;https://www.buymeacoffee.com/digitalgrease&quot;))"
         errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -3509,28 +3487,6 @@
             file="src/main/java/com/fauxx/data/crawllist/DomainBlocklist.kt"
             line="69"
             column="13"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fdroidUrl)))"
-        errorLine2="                                                                             ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/fauxx/ui/screens/FullVersionNotice.kt"
-            line="73"
-            column="78"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(githubUrl)))"
-        errorLine2="                                                                             ~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/fauxx/ui/screens/FullVersionNotice.kt"
-            line="82"
-            column="78"/>
     </issue>
 
     <issue

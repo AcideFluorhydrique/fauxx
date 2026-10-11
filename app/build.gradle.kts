@@ -5,7 +5,8 @@ import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 // Version is single-sourced from app/version.properties. F-Droid's checkupdates bot
 // reads the same file via UpdateCheckData; bump both keys together when releasing.
 // Scheme: versionCode = major*10000 + minor*100 + patch (≥100 for any release ≥0.1.0,
-// keeping Play's strict-monotonic rule satisfied above the v0.2.2 baseline of 15).
+// so it stays strictly increasing above the v0.2.2 baseline of 15, as Android requires
+// for in-place upgrades).
 val versionProps = Properties().apply {
     file("version.properties").reader().use { load(it) }
 }
@@ -70,9 +71,8 @@ android {
 
     flavorDimensions += "distribution"
     productFlavors {
-        create("play") {
-            dimension = "distribution"
-        }
+        // full is the only flavor. It stays a flavor (rather than a flavorless build) so the
+        // applicationId remains com.fauxx.full and F-Droid's build recipe keeps working.
         create("full") {
             dimension = "distribution"
             applicationIdSuffix = ".full"
@@ -354,10 +354,7 @@ kover {
                 )
             }
         }
-        // Measured against the full flavor — the shipped (F-Droid / GitHub) build. The play
-        // flavor is deprecated and unshipped; it only gets a compile-and-unit-test CI leg, so
-        // gating coverage on it would measure code (DiverseBrowsing/LocationSignal modules)
-        // that never ships while exempting nothing that does.
+        // Measured against fullDebug, the debug variant of the only build flavor.
         variant("fullDebug") {
             verify {
                 rule {

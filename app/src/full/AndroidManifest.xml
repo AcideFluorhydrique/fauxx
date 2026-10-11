@@ -2,16 +2,14 @@
 <!--
     Full (F-Droid / GitHub) flavor manifest overlay.
 
-    Uses "specialUse" foreground-service type — same as the play flavor — because
-    Fauxx's runtime behavior (generating synthetic privacy-noise traffic) doesn't
-    map to any of the categorical FGS types Android defines. dataSync, in particular,
+    Uses the "specialUse" foreground-service type because Fauxx's runtime behavior
+    (generating synthetic privacy-noise traffic) doesn't map to any of the categorical FGS types Android defines. dataSync, in particular,
     is documented as "user-initiated transfer of the user's own data to/from the
     cloud" and is subject to Android 14+'s 6h-per-24h cumulative cap, which made the
     engine appear stopped once the daily window exhausted (issues #64, #65).
-    specialUse has no time cap, so switching to it removed that failure mode. F-Droid does
-    not enforce Google Play's FGS-type review policy, so we pick by runtime fit
-    rather than store rules. The PROPERTY_SPECIAL_USE_FGS_SUBTYPE matches the play
-    flavor for consistency, even though F-Droid doesn't require it.
+    specialUse has no time cap, so switching to it removed that failure mode. The
+    PROPERTY_SPECIAL_USE_FGS_SUBTYPE gives a plain-language rationale for the type,
+    even though F-Droid doesn't require it.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -24,10 +22,6 @@
         permission. Without it, Fauxx never appears (issue #4). Lint flags this
         with MockLocation because it expects mock-location to be debug-only; we
         ship it in the full/F-Droid flavor deliberately and suppress the warning.
-
-        The play flavor does NOT declare this — Play Store policy is stricter
-        around mock location, and the play flavor's specialUse FGS subtype already
-        carries reviewer scrutiny that mock location would compound.
     -->
     <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION"
         tools:ignore="MockLocation" />
@@ -37,11 +31,8 @@
         broadcast is an allowed FGS-start context on Android 14+, so AlarmResumeReceiver can
         restart the specialUse foreground service at the scheduled time WITHOUT the user tapping a
         notification (which WorkManager's user-absent context cannot do). USE_EXACT_ALARM is
-        auto-granted and non-revocable.
-
-        Full/F-Droid flavor ONLY: Google Play restricts USE_EXACT_ALARM to alarm/calendar-class
-        apps, so the play flavor omits it and falls back to the tap-to-resume notification
-        (ResumeScheduler checks canScheduleExactAlarms()).
+        auto-granted and non-revocable. ResumeScheduler still checks canScheduleExactAlarms()
+        and falls back to the tap-to-resume notification when exact alarms are unavailable.
     -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
