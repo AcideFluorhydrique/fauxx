@@ -341,6 +341,16 @@ What it *doesn't* measure: a ratio against your real activity, which Android doe
 
 To see where the decoy activity is going, the **Targeting screen's category-weight chart** is more useful: red bars are categories Fauxx is suppressing (because they match your profile), green bars are categories it's boosting (off-profile decoys), gray is neutral. If you have imported an ad profile in Layer 2, the dashboard's **profile drift** card shows how far the imported profile has moved from your baseline.
 
+### I use DuckDuckGo App Tracking Protection or another tracker-blocking app. Does that affect Fauxx?
+
+Yes. Fauxx keeps running, but much of its effect is lost. The decoy signal travels in the requests a page makes to ad networks and analytics companies, and those are exactly what tracker blockers stop. In one report, DuckDuckGo App Tracking Protection had blocked 1,445 requests from 38 tracking companies made by Fauxx. Fauxx cannot tell you this is happening yet: the pages themselves still load, so the action log shows normal visits.
+
+Exclude Fauxx from the blocker. Your other apps stay protected, and what gets through is Fauxx's decoy browsing, not your own.
+
+- **DuckDuckGo App Tracking Protection:** in its settings, open the list of protected apps and turn protection off for Fauxx.
+- **Other blocker apps that run as a VPN on your phone** (AdGuard, Blokada, Rethink, TrackerControl and similar): add Fauxx to their excluded or bypassed apps. In Rethink, set Fauxx to bypass DNS and firewall.
+- **Blockers that cover your whole network or your phone's DNS** (Pi-hole, NextDNS, Private DNS, a router): these cannot exclude a single app. Use Custom DNS instead, described in the next question.
+
 ### My Pi-hole, NextDNS or VPN blocks tracker domains, so Fauxx can't reach them. What can I do?
 
 Turn on **Settings → Custom DNS for Fauxx**. Fauxx then looks up the sites it visits with a resolver you pick, over encrypted DNS (DNS-over-HTTPS) or a plain DNS server, while every other app on your phone keeps using your normal DNS and its blocking.

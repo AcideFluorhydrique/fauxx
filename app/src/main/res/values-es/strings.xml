@@ -254,6 +254,9 @@
     <!-- Pantalla de preguntas frecuentes (accesible desde el menú Ayuda) -->
     <string name="faq_title">PREGUNTAS FRECUENTES</string>
     <string name="faq_back">Volver</string>
+    <!-- PENDING NATIVE-SPEAKER REVIEW -->
+    <string name="faq_tracker_blocker_question">Uso la Protección de rastreo de apps de DuckDuckGo u otra app que bloquea rastreadores. ¿Afecta a Fauxx?</string>
+    <string name="faq_tracker_blocker_answer">Sí. Fauxx sigue funcionando, pero pierde gran parte de su efecto. La señal señuelo viaja en las peticiones que una página hace a redes publicitarias y empresas de analítica, y eso es justo lo que frenan los bloqueadores de rastreadores. Fauxx todavía no puede avisarte de que esto ocurre: las páginas en sí siguen cargando, así que el registro muestra visitas normales.\n\nExcluye a Fauxx del bloqueador. Tus demás apps siguen protegidas, y lo que pasa es la navegación señuelo de Fauxx, no la tuya.\n\n• Protección de rastreo de apps de DuckDuckGo: en sus ajustes, abre la lista de apps protegidas y desactiva la protección para Fauxx.\n• Otras apps bloqueadoras que funcionan como VPN en tu teléfono (AdGuard, Blokada, Rethink, TrackerControl y similares): añade Fauxx a sus apps excluidas o que se omiten. En Rethink, configura Fauxx para omitir el DNS y el cortafuegos.\n• Bloqueadores que cubren toda tu red o el DNS de tu teléfono (Pi-hole, NextDNS, DNS privado, un router): no pueden excluir una sola app. Activa en su lugar el DNS personalizado para Fauxx en Ajustes, para que Fauxx busque los sitios que visita con un resolvedor que tú elijas.</string>
     <string name="help_menu_faq">Preguntas frecuentes</string>
     <!-- LLM-DRAFTED 2026-05-23, PENDING NATIVE-SPEAKER REVIEW -->
     <string name="help_menu_help">Ayuda</string>
