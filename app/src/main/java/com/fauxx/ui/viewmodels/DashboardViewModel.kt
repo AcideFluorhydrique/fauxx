@@ -29,6 +29,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.fauxx.engine.dns.CustomDns
 import com.fauxx.engine.webview.WebViewCapabilities
+import com.fauxx.engine.webview.WebViewDiagnostics
+import com.fauxx.engine.webview.WebViewUpdateAdvice
 import com.fauxx.network.dns.DnsHealth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,7 +43,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -50,6 +51,9 @@ import javax.inject.Inject
 
 /** The quiet custom-DNS dashboard line (#227). */
 enum class CustomDnsNotice { FALLBACK, INTERCEPTED, CERTIFICATE_CHANGED }
+
+/** The dashboard's WebView warning: what was found, and where to send the user (#332, #336). */
+data class WebViewWarning(val found: WebViewDiagnostics, val advice: WebViewUpdateAdvice)
 
 data class DashboardUiState(
     val engineEnabled: Boolean = false,
@@ -116,15 +120,57 @@ class DashboardViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    private val _webViewWarning = MutableStateFlow<WebViewWarning?>(null)
+    private val webViewLock = Any()
+    private var webViewFound: WebViewDiagnostics? = null
+    private var playStoreInstalled = false
+
     /**
-     * True when the installed WebView cannot stop `X-Requested-With` from naming Fauxx, so every
-     * site it visits can tell the requests come from the app. The dashboard warns (and keeps
-     * browsing) until the user updates their WebView. Checked once, off the main thread: the first
-     * feature query can load the WebView provider, which is what hung the main thread in #55.
+     * What the installed WebView lacks, and what the user can do about it, when it cannot stop
+     * `X-Requested-With` from naming Fauxx so every site it visits can tell the requests come from
+     * the app; null when it can. The dashboard warns (and keeps browsing) and names the WebView and
+     * the missing features, since an update does not always add them (#336).
+     *
+     * The WebView is checked once, off the main thread, because the first feature query can load
+     * the WebView provider, which is what hung the main thread in #55; its answer holds for the
+     * life of the process (see [WebViewCapabilities]). Whether Google Play is installed can change
+     * while Fauxx runs, so [refreshStoreState] re-reads that and the advice follows it (#332).
+     * Published straight from the background thread: nothing here has to resume on Main.
      */
-    val webViewNamesApp: StateFlow<Boolean> = flow { emit(!webViewCapabilities.canHidePackageName()) }
-        .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val webViewWarning: StateFlow<WebViewWarning?> = _webViewWarning
+
+    init {
+        viewModelScope.launch(Dispatchers.Default) {
+            // Play state first, so the card never appears with a route that flips a moment later.
+            val play = webViewCapabilities.isPlayStoreInstalled(context)
+            synchronized(webViewLock) { playStoreInstalled = play }
+            val found = webViewCapabilities.diagnostics(context)
+            synchronized(webViewLock) {
+                webViewFound = found
+                publishWebViewWarning()
+            }
+        }
+    }
+
+    /**
+     * Re-read whether Google Play is installed and enabled. The dashboard calls this on resume, so
+     * a user who enables or disables Play and comes back gets a button that goes somewhere.
+     */
+    fun refreshStoreState() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val play = webViewCapabilities.isPlayStoreInstalled(context)
+            synchronized(webViewLock) {
+                playStoreInstalled = play
+                publishWebViewWarning()
+            }
+        }
+    }
+
+    /** Caller holds [webViewLock]. */
+    private fun publishWebViewWarning() {
+        _webViewWarning.value = webViewFound?.takeUnless { it.canHidePackageName }
+            ?.let { WebViewWarning(it, WebViewUpdateAdvice.choose(it.providerPackage, playStoreInstalled)) }
+    }
 
     private val _enabled = MutableStateFlow(profileRepo.getProfile().enabled)
 

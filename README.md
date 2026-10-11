@@ -354,7 +354,7 @@ Things to know:
 - Plain DNS is not encrypted: your network and ISP can see the names it looks up. It is also often captured by VPN and firewall apps, which then answer in place of your server; Fauxx checks for this (again whenever your network changes) and says so on the dashboard. Encrypted DNS avoids both.
 - It gets around DNS-level blocking only. Blocking by IP address or by TLS server name still applies.
 - While it is on, sites that support HTTP/3 are reached over HTTP/2: browsers do not use HTTP/3 through a proxy.
-- If your WebView is too old to route through a proxy, the setting is unavailable until you update Android System WebView.
+- If your WebView lacks the proxy feature (PROXY_OVERRIDE), the setting is unavailable. WebView 113 and 151 both have it. With Google Play, updating Android System WebView may add it; otherwise your WebView usually updates with your system or ROM, or from wherever it was installed.
 
 ### How does Layer 2 (Ad-Profile Import) work, and what do I import?
 

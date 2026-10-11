@@ -58,14 +58,19 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.fauxx.R
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.EngineState
+import com.fauxx.engine.webview.WebViewUpdateHint
+import com.fauxx.engine.webview.WebViewUpdateRoute
 import com.fauxx.ui.format.displayNameRes
 import com.fauxx.ui.format.personaAgeRangeRes
 import com.fauxx.ui.format.personaProfessionRes
 import com.fauxx.ui.viewmodels.CustomDnsNotice
 import com.fauxx.ui.viewmodels.DashboardViewModel
+import com.fauxx.ui.viewmodels.WebViewWarning
 
 /**
  * Dashboard screen showing: protection on/off toggle, action counters, category distribution
@@ -78,9 +83,13 @@ fun DashboardScreen(
     val uiState by viewModel.uiState.collectAsState()
     val showConsent by viewModel.showConsentDialog.collectAsState()
     val showFullVersionNotice by viewModel.showFullVersionNotice.collectAsState()
-    val webViewNamesApp by viewModel.webViewNamesApp.collectAsState()
+    val webViewWarning by viewModel.webViewWarning.collectAsState()
     val customDnsNotice by viewModel.customDnsNotice.collectAsState()
     val context = LocalContext.current
+
+    // Re-read whether Google Play is installed whenever the dashboard comes back, so the WebView
+    // warning's button follows a user who enabled or disabled Play meanwhile (#332).
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshStoreState() }
 
     // POST_NOTIFICATIONS permission (Android 13+)
     var notificationDenied by remember { mutableStateOf(false) }
@@ -190,15 +199,9 @@ fun DashboardScreen(
         }
 
         // The installed WebView cannot hide X-Requested-With, so every site sees "com.fauxx.full".
-        // Warn and keep running: the fix is a WebView update, which only the user can do.
-        if (webViewNamesApp) {
-            WarningCard(
-                text = stringResource(R.string.dashboard_webview_leak_title) + "\n\n" +
-                    stringResource(R.string.dashboard_webview_leak_body),
-                actionLabel = stringResource(R.string.dashboard_webview_leak_action),
-                onAction = { openWebViewStorePage(context) }
-            )
-        }
+        // Warn and keep running, name the WebView and what it lacks, and point at the update path
+        // that actually exists for it: Play for Google's WebView, the system for everything else.
+        webViewWarning?.let { warning -> WebViewWarningCard(warning) }
 
         // Custom DNS fell back to the device's DNS (#227). One quiet line, not a warning card:
         // nothing is broken, browsing continues, the user just gets to know.
@@ -715,20 +718,73 @@ private fun WarningCard(
     }
 }
 
+@Composable
+private fun WebViewWarningCard(warning: WebViewWarning) {
+    val context = LocalContext.current
+    val found = warning.found
+    val advice = warning.advice
+    val provider = found.providerPackage
+        ?.let { pkg -> listOfNotNull(pkg, found.providerVersion).joinToString(" ") }
+        ?: stringResource(R.string.dashboard_webview_leak_provider_unknown)
+    val text = buildList {
+        add(stringResource(R.string.dashboard_webview_leak_title))
+        add(stringResource(R.string.dashboard_webview_leak_body))
+        add(
+            stringResource(
+                R.string.dashboard_webview_leak_found,
+                provider,
+                found.missingForPackageNameHiding.joinToString(", ")
+            )
+        )
+        if (found.checkFailed) add(stringResource(R.string.dashboard_webview_leak_check_failed))
+        add(
+            when (advice.hint) {
+                WebViewUpdateHint.PLAY ->
+                    stringResource(R.string.dashboard_webview_leak_hint_play, advice.appName)
+                WebViewUpdateHint.GOOGLE_WITHOUT_PLAY ->
+                    stringResource(R.string.dashboard_webview_leak_hint_google_no_play, advice.appName)
+                WebViewUpdateHint.OTHER -> stringResource(R.string.dashboard_webview_leak_hint_system)
+                WebViewUpdateHint.UNKNOWN -> stringResource(R.string.dashboard_webview_leak_hint_unknown)
+            }
+        )
+    }.joinToString("\n\n")
+    WarningCard(
+        text = text,
+        actionLabel = when (advice.route) {
+            is WebViewUpdateRoute.PlayStore -> stringResource(R.string.dashboard_webview_leak_action)
+            is WebViewUpdateRoute.AppDetails -> stringResource(R.string.dashboard_webview_leak_action_details)
+            WebViewUpdateRoute.None -> null
+        },
+        onAction = { openWebViewUpdateRoute(context, advice.route) }
+    )
+}
+
 /**
- * Open the store page of whichever WebView the device actually uses (Google's, a vendor's, or a
- * hardened build), so the update the dashboard asks for is one tap away. `market://` is also
- * handled by F-Droid-style stores; the Play web page is the fallback.
+ * Follow [route]. Play is opened explicitly in the Play Store app: a bare `market://` link is
+ * also handled by F-Droid, which carries no WebView and answered "No such app" (#332).
  */
-private fun openWebViewStorePage(context: android.content.Context) {
-    val pkg = runCatching { androidx.webkit.WebViewCompat.getCurrentWebViewPackage(context)?.packageName }
-        .getOrNull() ?: "com.google.android.webview"
-    val market = Intent(Intent.ACTION_VIEW, "market://details?id=$pkg".toUri())
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    val web = Intent(Intent.ACTION_VIEW, "https://play.google.com/store/apps/details?id=$pkg".toUri())
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    runCatching { context.startActivity(market) }
-        .recoverCatching { context.startActivity(web) }
+private fun openWebViewUpdateRoute(context: android.content.Context, route: WebViewUpdateRoute) {
+    when (route) {
+        is WebViewUpdateRoute.PlayStore -> {
+            val market = Intent(Intent.ACTION_VIEW, "market://details?id=${route.packageName}".toUri())
+                .setPackage(WebViewUpdateRoute.PLAY_STORE_PACKAGE)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val web = Intent(
+                Intent.ACTION_VIEW,
+                "https://play.google.com/store/apps/details?id=${route.packageName}".toUri()
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(market) }
+                .recoverCatching { context.startActivity(web) }
+        }
+        is WebViewUpdateRoute.AppDetails -> {
+            val details = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", route.packageName, null)
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(details) }
+        }
+        WebViewUpdateRoute.None -> Unit
+    }
 }
 
 @Composable

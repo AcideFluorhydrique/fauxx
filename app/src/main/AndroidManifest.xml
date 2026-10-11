@@ -53,6 +53,12 @@
     <!-- Battery optimization -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- The WebView warning opens Google Play only when Play is installed (#332); seeing it
+         needs package visibility on Android 11+. -->
+    <queries>
+        <package android:name="com.android.vending" />
+    </queries>
+
     <application
         android:name=".FauxxApp"
         android:allowBackup="false"
