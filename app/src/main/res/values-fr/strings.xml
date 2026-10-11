@@ -479,7 +479,7 @@
     <!-- Dashboard screen — LLM-DRAFTED 2026-05-16, PENDING NATIVE-SPEAKER REVIEW -->
     <string name="dashboard_warning_notification_denied">Autorisation de notifications refusée — l\'indicateur d\'activité en arrière-plan est masqué. Accorde l\'autorisation de notifications dans les Paramètres pour voir la notification de statut.</string>
     <string name="dashboard_warning_action_open_settings">Ouvrir les paramètres</string>
-    <string name="dashboard_warning_battery_optimized">L\'optimisation de la batterie d\'Android limite Fauxx. L\'activité en arrière-plan se mettra en pause quand l\'écran sera éteint. Autorise l\'utilisation sans restriction en arrière-plan pour que le moteur continue de fonctionner.</string>
+    <string name="dashboard_warning_battery_optimized">L\'optimisation de la batterie d\'Android limite Fauxx. Quand l\'écran est éteint, Android peut beaucoup espacer son activité. Autorise l\'utilisation sans restriction en arrière-plan pour que le moteur garde son rythme.</string>
     <string name="dashboard_warning_action_allow">Autoriser</string>
     <string name="dashboard_engine_state_active">Génération d\'une activité synthétique</string>
     <string name="dashboard_engine_state_paused_wifi">En pause — en attente d\'un réseau utilisable</string>
