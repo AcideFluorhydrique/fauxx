@@ -250,6 +250,8 @@
     <!-- FAQ screen (reached from the Help dropdown) -->
     <string name="faq_title">FAQ</string>
     <string name="faq_back">Back</string>
+    <string name="faq_tracker_blocker_question">I use DuckDuckGo App Tracking Protection or another tracker-blocking app. Does that affect Fauxx?</string>
+    <string name="faq_tracker_blocker_answer">Yes. Fauxx keeps running, but much of its effect is lost. The decoy signal travels in the requests a page makes to ad networks and analytics companies, and those are exactly what tracker blockers stop. Fauxx can\'t tell you this is happening yet: the pages themselves still load, so the log shows normal visits.\n\nExclude Fauxx from the blocker. Your other apps stay protected, and what gets through is Fauxx\'s decoy browsing, not your own.\n\n• DuckDuckGo App Tracking Protection: in its settings, open the list of protected apps and turn protection off for Fauxx.\n• Other blocker apps that run as a VPN on your phone (AdGuard, Blokada, Rethink, TrackerControl and similar): add Fauxx to their excluded or bypassed apps. In Rethink, set Fauxx to bypass DNS and firewall.\n• Blockers that cover your whole network or your phone\'s DNS (Pi-hole, NextDNS, Private DNS, a router): these can\'t exclude a single app. Turn on Custom DNS for Fauxx in Settings instead, so Fauxx looks up the sites it visits with a resolver you choose.</string>
     <string name="help_menu_faq">FAQ</string>
     <string name="help_menu_help">Help</string>
     <string name="help_menu_contact">Contact us</string>

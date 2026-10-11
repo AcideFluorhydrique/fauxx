@@ -83,6 +83,10 @@ fun FaqScreen(onBack: () -> Unit) {
             answer = stringResource(R.string.faq_q5_answer)
         )
         FaqEntry(
+            question = stringResource(R.string.faq_tracker_blocker_question),
+            answer = stringResource(R.string.faq_tracker_blocker_answer)
+        )
+        FaqEntry(
             question = stringResource(R.string.faq_q1_question),
             answer = stringResource(R.string.faq_q1_answer)
         )

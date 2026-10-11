@@ -254,6 +254,9 @@
     <!-- Écran FAQ (accessible depuis le menu Aide) -->
     <string name="faq_title">FAQ</string>
     <string name="faq_back">Retour</string>
+    <!-- PENDING NATIVE-SPEAKER REVIEW -->
+    <string name="faq_tracker_blocker_question">J\'utilise la protection contre le pistage des applis de DuckDuckGo ou une autre appli qui bloque les traqueurs. Est-ce que cela affecte Fauxx ?</string>
+    <string name="faq_tracker_blocker_answer">Oui. Fauxx continue de fonctionner, mais perd une grande partie de son effet. Le signal leurre passe par les requêtes qu\'une page envoie aux régies publicitaires et aux sociétés d\'analyse, et c\'est précisément ce que bloquent les bloqueurs de traqueurs. Fauxx ne peut pas encore vous signaler que cela se produit : les pages elles-mêmes se chargent toujours, donc le journal affiche des visites normales.\n\nExcluez Fauxx du bloqueur. Vos autres applis restent protégées, et ce qui passe, c\'est la navigation leurre de Fauxx, pas la vôtre.\n\n• Protection contre le pistage des applis de DuckDuckGo : dans ses réglages, ouvrez la liste des applis protégées et désactivez la protection pour Fauxx.\n• Autres applis de blocage qui fonctionnent comme un VPN sur votre téléphone (AdGuard, Blokada, Rethink, TrackerControl et similaires) : ajoutez Fauxx à leurs applis exclues ou contournées. Dans Rethink, réglez Fauxx pour contourner le DNS et le pare-feu.\n• Bloqueurs qui couvrent tout votre réseau ou le DNS de votre téléphone (Pi-hole, NextDNS, DNS privé, un routeur) : ils ne peuvent pas exclure une seule appli. Activez plutôt le DNS personnalisé pour Fauxx dans les Paramètres, pour que Fauxx recherche les sites qu\'il visite avec un résolveur de votre choix.</string>
     <string name="help_menu_faq">FAQ</string>
     <!-- LLM-DRAFTED 2026-05-23, PENDING NATIVE-SPEAKER REVIEW -->
     <string name="help_menu_help">Aide</string>
