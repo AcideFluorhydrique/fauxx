@@ -60,6 +60,8 @@ data class SettingsUiState(
     val plainDnsServer: String = "",
     val routeDnsNoise: Boolean = false,
     val preferredCustomDnsMode: DnsMode = DnsMode.DOH,
+    /** Strict custom DNS (#333, see [com.fauxx.data.model.PoisonProfile.dnsStrict]). */
+    val dnsStrict: Boolean = false,
     /** Search engines the user opted out of poisoning (issue #281). */
     val excludedSearchEngines: Set<String> = emptySet(),
 ) {
@@ -87,7 +89,18 @@ data class LanguageUiState(
 )
 
 /** Outcome of [SettingsViewModel.saveDohCustom], so the screen can mark the right field. */
-enum class DohSaveResult { SAVED, INVALID_URL, INVALID_SERVER_IP, MISSING_URL }
+enum class DohSaveResult {
+    SAVED,
+    INVALID_URL,
+    INVALID_SERVER_IP,
+    MISSING_URL,
+
+    /** An http:// resolver with a public server IP: its queries would cross the internet unencrypted (#334). */
+    PUBLIC_SERVER_IP_FOR_HTTP,
+
+    /** Strict mode with an http:// resolver named by a hostname: its IP is needed (#333). */
+    NEEDS_SERVER_IP,
+}
 
 /**
  * ViewModel for the Settings screen. Manages global engine configuration and
@@ -180,6 +193,20 @@ class SettingsViewModel @Inject constructor(
     fun setRouteDnsNoise(v: Boolean) { update { it.copy(routeDnsNoise = v) } }
 
     /**
+     * Never fall back to the device's DNS while custom DNS is on (#333). Refused (false) while the
+     * custom resolver is an http:// one named by a hostname with no server IP: strict mode could
+     * never look that name up, so it would block all browsing. The screen asks for the IP instead.
+     */
+    fun setDnsStrict(v: Boolean): Boolean {
+        val s = _uiState.value
+        if (v && s.dnsMode == DnsMode.DOH && s.dohProvider == DohPresets.CUSTOM_ID &&
+            DohPresets.needsServerIpInStrict(s.dohCustomUrl, s.dohCustomServerIp)
+        ) return false
+        update { it.copy(dnsStrict = v) }
+        return true
+    }
+
+    /**
      * Save a plain DNS server (an IP, optionally with a port) and switch to it. Saved on an explicit
      * tap, like the DoH URL, since every saved change restarts the proxy. A blank save removes the
      * stored server, falling back to encrypted DNS if plain was in use.
@@ -203,7 +230,8 @@ class SettingsViewModel @Inject constructor(
 
     /**
      * Save the user's own DoH URL, with an optional server IP, and select it. Rejects anything but a
-     * valid https URL and, when given, a numeric IP. Called on an explicit save rather than per
+     * valid https URL, or an http one on a private network (#334), and, when given, a numeric IP
+     * (private, for http). Called on an explicit save rather than per
      * keystroke: every saved change restarts the loopback proxy, and each prefix of a URL being
      * typed would otherwise be a restart.
      *
@@ -231,8 +259,13 @@ class SettingsViewModel @Inject constructor(
             }
             return DohSaveResult.SAVED
         }
-        if (!DohPresets.isValidCustomUrl(url)) return DohSaveResult.INVALID_URL
-        if (serverIp.isNotBlank() && DohPresets.parseServerIp(serverIp) == null) return DohSaveResult.INVALID_SERVER_IP
+        val parsedIp = if (serverIp.isBlank()) null else DohPresets.parseServerIp(serverIp)
+        if (serverIp.isNotBlank() && parsedIp == null) return DohSaveResult.INVALID_SERVER_IP
+        // An http resolver with a public server IP: the IP is what is wrong, so say so (#334).
+        if (parsedIp != null && !DohPresets.isUsableServerIp(url, serverIp)) return DohSaveResult.PUBLIC_SERVER_IP_FOR_HTTP
+        if (!DohPresets.isValidCustomUrl(url, serverIp)) return DohSaveResult.INVALID_URL
+        // Strict mode never asks the device's DNS, which is the only one that knows pihole.lan (#333).
+        if (_uiState.value.dnsStrict && DohPresets.needsServerIpInStrict(url, serverIp)) return DohSaveResult.NEEDS_SERVER_IP
         update {
             val changed = it.dohCustomUrl != url.trim() || it.dohCustomServerIp != serverIp.trim()
             it.copy(
@@ -343,6 +376,7 @@ class SettingsViewModel @Inject constructor(
                     plainDnsServer = new.plainDnsServer,
                     routeDnsNoise = new.routeDnsNoise,
                     preferredCustomDnsMode = new.preferredCustomDnsMode,
+                    dnsStrict = new.dnsStrict,
                     excludedSearchEngines = new.excludedSearchEngines,
                     // Empty string in UI-state collapses to null in profile so the
                     // engine treats "blank field" as "no override" cleanly.
@@ -373,6 +407,7 @@ class SettingsViewModel @Inject constructor(
             plainDnsServer = p.plainDnsServer,
             routeDnsNoise = p.routeDnsNoise,
             preferredCustomDnsMode = p.preferredCustomDnsMode,
+            dnsStrict = p.dnsStrict,
             excludedSearchEngines = p.excludedSearchEngines,
         )
     }

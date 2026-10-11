@@ -202,6 +202,62 @@ class SettingsViewModelTest {
         assertTrue(vm.uiState.value.routeDnsNoise)
     }
 
+    @Test
+    fun `the strict DNS switch reaches the saved profile (#333)`() = runTest {
+        val vm = viewModel()
+        val transform = io.mockk.slot<(PoisonProfile) -> PoisonProfile>()
+        io.mockk.coEvery { profileRepo.updateProfile(capture(transform)) } returns Unit
+        vm.setDnsStrict(true)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.dnsStrict)
+        assertTrue(transform.captured(PoisonProfile()).dnsStrict)
+    }
+
+    @Test
+    fun `an http DoH URL is saved only for a private resolver, with a private server IP (#334)`() = runTest {
+        val vm = viewModel()
+        assertEquals(com.fauxx.ui.viewmodels.DohSaveResult.SAVED, vm.saveDohCustom("http://pihole.lan:3000/dns-query", ""))
+        assertEquals("http://pihole.lan:3000/dns-query", vm.uiState.value.dohCustomUrl)
+
+        assertEquals(
+            "a public IP gets its own message, not 'enter an IP address'",
+            com.fauxx.ui.viewmodels.DohSaveResult.PUBLIC_SERVER_IP_FOR_HTTP,
+            vm.saveDohCustom("http://pihole.lan:3000/dns-query", "9.9.9.9"),
+        )
+        assertEquals(
+            com.fauxx.ui.viewmodels.DohSaveResult.PUBLIC_SERVER_IP_FOR_HTTP,
+            vm.saveDohCustom("http://dns.corp/dns-query", "9.9.9.9"),
+        )
+        assertEquals("", vm.uiState.value.dohCustomServerIp)
+        assertEquals(
+            com.fauxx.ui.viewmodels.DohSaveResult.SAVED,
+            vm.saveDohCustom("http://pihole.lan:3000/dns-query", "192.168.1.2"),
+        )
+        assertEquals(com.fauxx.ui.viewmodels.DohSaveResult.INVALID_URL, vm.saveDohCustom("http://dns.example/dns-query", ""))
+        assertEquals(
+            "any name, given a private server IP",
+            com.fauxx.ui.viewmodels.DohSaveResult.SAVED,
+            vm.saveDohCustom("http://pihole/dns-query", "10.8.0.1"),
+        )
+    }
+
+    @Test
+    fun `strict mode and an http resolver named by a hostname need its IP, caught at save time (#333)`() = runTest {
+        val vm = viewModel()
+        vm.setCustomDnsEnabled(true)
+        assertEquals(com.fauxx.ui.viewmodels.DohSaveResult.SAVED, vm.saveDohCustom("http://pihole.lan/dns-query", ""))
+        assertEquals("strict is refused while it could never look the name up", false, vm.setDnsStrict(true))
+        assertEquals(false, vm.uiState.value.dnsStrict)
+
+        assertEquals(com.fauxx.ui.viewmodels.DohSaveResult.SAVED, vm.saveDohCustom("http://pihole.lan/dns-query", "192.168.1.2"))
+        assertEquals(true, vm.setDnsStrict(true))
+        assertEquals(
+            com.fauxx.ui.viewmodels.DohSaveResult.NEEDS_SERVER_IP,
+            vm.saveDohCustom("http://pihole.lan/dns-query", ""),
+        )
+        assertEquals("192.168.1.2", vm.uiState.value.dohCustomServerIp)
+    }
+
     // --- #313 Battery Saver ---
 
     @Test

@@ -121,6 +121,7 @@ class PhantomWebViewPool @Inject constructor(
     private val identityProvider: PhantomIdentityProvider = PhantomIdentityProvider.NONE,
     private val browsingPrefs: PhantomBrowsingPrefs = PhantomBrowsingPrefs.NONE,
     private val proxyAuth: PhantomProxyAuth = PhantomProxyAuth.NONE,
+    private val browsingGate: PhantomBrowsingGate = PhantomBrowsingGate.NONE,
 ) {
     private val pool = mutableListOf<WebView>()
     private var initialized = false
@@ -404,6 +405,10 @@ class PhantomWebViewPool @Inject constructor(
      * leak it.
      */
     suspend fun acquire(): WebView {
+        // Strict custom DNS (#333): every browsing module comes through here, so this is where a
+        // WebView that is not routed through Fauxx's resolver is kept from browsing direct.
+        browsingGate.browsingBlockedReason()?.let { throw BrowsingBlockedException(it) }
+
         // Bind the active persona's jar BEFORE taking a permit. Two reasons, and the second is a
         // deadlock, not a preference:
         //
@@ -424,6 +429,10 @@ class PhantomWebViewPool @Inject constructor(
         return try {
             withTimeoutOrNull(MAIN_OP_TIMEOUT_MS) {
                 withContext(Dispatchers.Main) {
+                    // Again, now that the permit is held: the jar swap and the permit wait above
+                    // can take many seconds, and routing may have been lost meanwhile. The catch
+                    // below returns the permit.
+                    browsingGate.browsingBlockedReason()?.let { throw BrowsingBlockedException(it) }
                     // Heal a pool left short by a failed jar rebuild before picking from it.
                     if (pool.size < POOL_SIZE) ensurePool()
                     val wv = pool.first { acquired.putIfAbsent(it.tag as String, true) == null }

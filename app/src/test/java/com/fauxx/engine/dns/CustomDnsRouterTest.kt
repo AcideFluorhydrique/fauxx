@@ -4,6 +4,7 @@ import com.fauxx.data.model.DnsMode
 import com.fauxx.data.model.PoisonProfile
 import com.fauxx.engine.PoisonProfileRepository
 import com.fauxx.engine.webview.WebViewProxyOverride
+import com.fauxx.network.dns.DegradeCause
 import com.fauxx.network.dns.DnsHealth
 import com.fauxx.network.dns.DohPresets
 import com.fauxx.support.FakeClock
@@ -13,10 +14,12 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -26,17 +29,28 @@ import java.net.Socket
 
 class CustomDnsRouterTest {
 
+    /**
+     * The WebView's override. Unlike the real one it confirms at once by default, so it can also be
+     * told to refuse ([accept], which is what a 5 s confirmation timeout returns), to throw
+     * ([throwOnSet]), or to hold set() pending until [setGate] completes.
+     */
     private class FakeOverride(
-        var supported: Boolean = true,
-        var accept: Boolean = true,
-        var clears: Boolean = true,
+        @Volatile var supported: Boolean = true,
+        @Volatile var accept: Boolean = true,
+        @Volatile var clears: Boolean = true,
         var clearDelayMs: Long = 0L,
     ) : WebViewProxyOverride {
-        val calls = mutableListOf<String>()
+        val calls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         @Volatile var port: Int? = null
+        @Volatile var throwOnSet = false
+        @Volatile var setGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
         override fun isSupported() = supported
         override suspend fun set(port: Int): Boolean {
-            calls += "set"; if (accept) this.port = port; return accept
+            calls += "set"
+            setGate?.await()
+            if (throwOnSet) throw IllegalStateException("WebView provider went away")
+            if (accept) this.port = port
+            return accept
         }
         override suspend fun clear(): Boolean {
             calls += "clear"
@@ -59,10 +73,31 @@ class CustomDnsRouterTest {
     private val override = FakeOverride()
     @Volatile private var intercepted = false
     private val networkChanged = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+
+    /** Every proxy the router built, with the callback it would call on dying. */
+    private val made: MutableList<Pair<com.fauxx.network.dns.LoopbackProxy, (Throwable) -> Unit>> =
+        java.util.Collections.synchronizedList(mutableListOf())
+
+    /** How many of the next proxies fail to start. */
+    private val failStarts = java.util.concurrent.atomic.AtomicInteger(0)
+
+    private fun servingProxies() = made.toList().count { (p, _) -> isServing(p.port) }
     private val router = CustomDnsRouter(
         repo, FakeClock(0L), override, DnsInterceptionProbe { intercepted },
         object : NetworkChanges { override val changes = networkChanged },
-    )
+    ).apply {
+        // Out of the way of tests that count override calls; the retry tests shorten it.
+        retryDelaysMs = listOf(60_000L)
+        proxyFactory = { resolver, credentials, onDied ->
+            com.fauxx.network.dns.LoopbackProxy(resolver, credentials, onDied = onDied).also { p ->
+                made += p to onDied
+                // Already bound, so the router's own start() throws, as a failed bind would.
+                if (failStarts.getAndUpdate { maxOf(0, it - 1) } > 0) p.start()
+            }
+        }
+    }
+
+    private fun isServing(port: Int) = runCatching { Socket("127.0.0.1", port).close() }.isSuccess
 
     @After
     fun tearDown() = runBlocking { router.stop() }
@@ -126,12 +161,16 @@ class CustomDnsRouterTest {
         override.accept = false
         profile.value = doh()
         router.start()
+        // The settings collector's first value is the one start() applied; it must not try again
+        // (the backoff retry owns that), whichever of the two runs first.
+        withTimeout(5_000) { router.settingsApplied.first { it >= 1 } }
         assertEquals(listOf("set", "clear"), override.calls)
         assertTrue(router.health.value is DnsHealth.Degraded)
     }
 
     @Test
     fun `an invalid custom URL degrades instead of routing`() = runBlocking {
+        // http is only for a private resolver (#334); a public one stays invalid.
         profile.value = doh(provider = DohPresets.CUSTOM_ID, url = "http://not-https.example/dns-query")
         router.start()
         assertTrue(override.calls.isEmpty())
@@ -181,6 +220,346 @@ class CustomDnsRouterTest {
         // The old proxy is gone; its credentials stay answerable only so challenges already in
         // flight during the swap do not fail a page load, and they open nothing.
         assertTrue("the old proxy must be stopped", runCatching { Socket("127.0.0.1", firstPort).close() }.isFailure)
+        // #333: the WebView moves straight onto the new proxy. Clearing first left a window in
+        // which pages were looked up on the system resolver.
+        assertEquals(listOf("set", "set"), override.calls)
+    }
+
+    @Test
+    fun `a swap the WebView refuses falls back to direct connections and stops both proxies`() = runBlocking {
+        profile.value = doh()
+        router.start()
+        val firstPort = override.port!!
+
+        override.accept = false
+        profile.value = doh(provider = DohPresets.CLOUDFLARE.id)
+        withTimeout(5_000) { while (router.health.value !is DnsHealth.Degraded) delay(20) }
+
+        assertEquals(listOf("set", "set", "clear"), override.calls)
+        assertTrue("the old proxy goes once the clear confirms", runCatching { Socket("127.0.0.1", firstPort).close() }.isFailure)
+        assertNull("fail-open: nothing blocks browsing", router.browsingBlockedReason())
+    }
+
+    // --- Strict mode (#333) ---
+
+    /** A DoH URL nothing answers at, so every lookup through it fails. Cleartext, so no TLS to wait on. */
+    private fun deadResolver(strict: Boolean, routeNoise: Boolean = false): PoisonProfile {
+        val port = java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
+        return doh(provider = DohPresets.CUSTOM_ID, url = "http://127.0.0.1:$port/dns-query")
+            .copy(dnsStrict = strict, routeDnsNoise = routeNoise)
+    }
+
+    @Test
+    fun `without strict mode a failing resolver falls back to the system resolver`() = runBlocking {
+        profile.value = deadResolver(strict = false, routeNoise = true)
+        router.start()
+        assertTrue(router.noiseResolver()!!.resolve("localhost") is com.fauxx.network.dns.Resolution.Addresses)
+        assertNull(router.browsingBlockedReason())
+    }
+
+    @Test
+    fun `strict mode never sends a lookup to the system resolver`() = runBlocking {
+        profile.value = deadResolver(strict = true)
+        router.start()
+        assertNotNull("the WebView is routed", override.port)
+        assertNull(router.browsingBlockedReason())
+        // localhost is one name the system resolver always answers, so a Failure means it was not asked.
+        val noise = router.noiseResolver()!!
+        repeat(4) { assertTrue(noise.resolve("localhost") is com.fauxx.network.dns.Resolution.Failure) }
+        // Health reaches the router through a collector, so wait for it rather than race it.
+        val health = withTimeout(5_000) {
+            var h = router.health.value
+            while (h !is DnsHealth.Degraded) { delay(20); h = router.health.value }
+            h
+        }
+        assertTrue("degraded, and saying lookups fail", health.blocked)
+    }
+
+    @Test
+    fun `strict mode sends DNS noise to the custom resolver even when routing noise is off`() = runBlocking {
+        profile.value = doh().copy(dnsStrict = true, routeDnsNoise = false)
+        router.start()
+        assertNotNull(router.noiseResolver())
+    }
+
+    @Test
+    fun `strict mode with a WebView that cannot be routed blocks browsing instead of going direct`() = runBlocking {
+        override.supported = false
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        assertNotNull(router.browsingBlockedReason())
+        val health = router.health.value
+        assertTrue(health is DnsHealth.Degraded && health.blocked)
+        assertTrue(
+            "noise must not reach the system resolver either",
+            router.noiseResolver()!!.resolve("localhost") is com.fauxx.network.dns.Resolution.Failure,
+        )
+    }
+
+    @Test
+    fun `strict mode with a WebView that refuses the override blocks browsing and never clears`() = runBlocking {
+        override.accept = false
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        assertNotNull(router.browsingBlockedReason())
+        assertTrue("strict mode must not restore direct connections", "clear" !in override.calls)
+        val health = router.health.value
+        assertTrue(health is DnsHealth.Degraded && health.blocked && health.cause == DegradeCause.ROUTING)
+    }
+
+    @Test
+    fun `strict mode keeps both proxies when a swap is refused, and a retry brings routing back`() = runBlocking {
+        router.retryDelaysMs = listOf(100L)
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        val firstPort = override.port!!
+
+        override.accept = false // a 5 s confirmation timeout looks exactly like this
+        profile.value = doh(provider = DohPresets.CLOUDFLARE.id).copy(dnsStrict = true)
+        withTimeout(5_000) { while (router.browsingBlockedReason() == null) delay(20) }
+
+        assertTrue("never cleared: pages in flight stay on a strict proxy", "clear" !in override.calls)
+        assertTrue("the WebView may still point at the old proxy, so it keeps serving", isServing(firstPort))
+        assertNotNull("and its challenge is still answered", router.credentialsFor("127.0.0.1", realmOf(firstPort)))
+
+        override.accept = true
+        withTimeout(5_000) { while (router.browsingBlockedReason() != null) delay(20) }
+        assertTrue("the retry put a fresh proxy in place", override.port != firstPort)
+        assertTrue("and only then retired the old one", !isServing(firstPort))
+        assertTrue("clear" !in override.calls)
+    }
+
+    @Test
+    fun `an override call that throws is a refusal, not a crash`() = runBlocking {
+        override.throwOnSet = true
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        assertNotNull(router.browsingBlockedReason())
+        assertTrue("clear" !in override.calls)
+    }
+
+    @Test
+    fun `strict mode retries a refused override with backoff until it is accepted`() = runBlocking {
+        router.retryDelaysMs = listOf(100L)
+        override.accept = false
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        assertNotNull(router.browsingBlockedReason())
+
+        withTimeout(5_000) { while (override.calls.count { it == "set" } < 3) delay(20) }
+        override.accept = true
+        withTimeout(5_000) { while (router.browsingBlockedReason() != null) delay(20) }
+        assertNotNull(override.port)
+        withTimeout(5_000) { while (router.health.value !is DnsHealth.Healthy) delay(20) }
+    }
+
+    @Test
+    fun `fail-open mode also retries, instead of staying direct until a settings change`() = runBlocking {
+        router.retryDelaysMs = listOf(100L)
+        override.accept = false
+        profile.value = doh()
+        router.start()
+        assertNull("fail-open never blocks browsing", router.browsingBlockedReason())
+
+        override.accept = true
+        withTimeout(5_000) { while (override.port == null) delay(20) }
+        withTimeout(5_000) { while (router.health.value !is DnsHealth.Healthy) delay(20) }
+    }
+
+    @Test
+    fun `stop cancels a pending retry`() = runBlocking {
+        // Long enough that the retry cannot fire before stop() runs.
+        router.retryDelaysMs = listOf(60_000L)
+        override.accept = false
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        assertTrue("the refused set() scheduled a retry", router.retryPending())
+        router.stop()
+        assertFalse("stop() cancelled it", router.retryPending())
+    }
+
+    @Test
+    fun `turning strict mode on closes the gate and makes the serving proxy strict before the swap confirms`() = runBlocking {
+        profile.value = deadResolver(strict = false, routeNoise = true)
+        router.start()
+        val oldNoise = router.noiseResolver()!!
+        assertTrue("fail-open: falls back", oldNoise.resolve("localhost") is com.fauxx.network.dns.Resolution.Addresses)
+
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        override.setGate = gate
+        profile.value = profile.value.copy(dnsStrict = true)
+        withTimeout(5_000) { while (override.calls.count { it == "set" } < 2) delay(20) }
+
+        // The new set() is still pending: the old proxy is what pages in flight use.
+        assertNotNull("nothing new is browsed until the strict proxy is confirmed", router.browsingBlockedReason())
+        assertTrue(
+            "the old proxy's resolver no longer falls back",
+            oldNoise.resolve("localhost") is com.fauxx.network.dns.Resolution.Failure,
+        )
+        gate.complete(Unit)
+        withTimeout(5_000) { while (router.browsingBlockedReason() != null) delay(20) }
+    }
+
+    // --- A strict proxy that dies, and how many proxies are kept (second review) ---
+
+    /** Start strict DoH, then make its proxy die. Returns the dead proxy's port. */
+    private suspend fun strictProxyDies(): Int {
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        val port = override.port!!
+        // Wait for the settings collector to apply its first value: with the proxy gone, a later
+        // first emission would (rightly) route again at once, hiding the state under test.
+        withTimeout(5_000) { while (router.settingsApplied.value < 1) delay(20) }
+        made.last().second(java.io.IOException("accept loop died"))
+        withTimeout(5_000) { while (router.browsingBlockedReason() == null) delay(20) }
+        return port
+    }
+
+    @Test
+    fun `a strict proxy that dies is stopped so its port refuses, and the override is kept`() = runBlocking {
+        val port = strictProxyDies()
+        assertTrue("connections are refused, not left hanging in a backlog", !isServing(port))
+        assertTrue("strict mode keeps the WebView on the dead port", "clear" !in override.calls)
+        val health = router.health.value
+        assertTrue(health is DnsHealth.Degraded && health.blocked && health.cause == DegradeCause.ROUTING)
+    }
+
+    @Test
+    fun `after a strict proxy dies, switching to system DNS still clears the override`() = runBlocking {
+        strictProxyDies()
+        profile.value = PoisonProfile()
+        withTimeout(5_000) { while ("clear" !in override.calls || router.health.value != DnsHealth.Off) delay(20) }
+        assertNull("the WebView no longer points at the dead port", override.port)
+        assertNull(router.browsingBlockedReason())
+    }
+
+    @Test
+    fun `after a strict proxy dies, stopping the engine still clears the override`() = runBlocking {
+        strictProxyDies()
+        router.stop()
+        assertTrue("clear" in override.calls)
+        assertNull(override.port)
+    }
+
+    @Test
+    fun `after a strict proxy dies, turning strict off with a proxy that will not start still clears`() = runBlocking {
+        strictProxyDies()
+        failStarts.set(1)
+        profile.value = doh() // strict off
+        withTimeout(5_000) { while ("clear" !in override.calls) delay(20) }
+        assertNull("fail-open: direct, not a dead port", override.port)
+        assertNull(router.browsingBlockedReason())
+    }
+
+    @Test
+    fun `strict retries that keep failing keep at most two proxies alive`() = runBlocking {
+        router.retryDelaysMs = listOf(50L)
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        val confirmedPort = override.port!!
+
+        override.accept = false // every set() from here on times out
+        profile.value = doh(provider = DohPresets.CLOUDFLARE.id).copy(dnsStrict = true)
+        withTimeout(10_000) { while (override.calls.count { it == "set" } < 8) delay(20) }
+
+        assertTrue("built one proxy per attempt", made.size >= 8)
+        assertTrue("only the last confirmed and the newest unconfirmed may be targets", servingProxies() <= 2)
+        assertTrue("the last confirmed one is kept", isServing(confirmedPort))
+    }
+
+    @Test
+    fun `a proxy whose set threw is stopped at once, the confirmed one kept`() = runBlocking {
+        router.retryDelaysMs = listOf(50L)
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        val confirmedPort = override.port!!
+
+        override.throwOnSet = true // the WebView never received these
+        profile.value = doh(provider = DohPresets.CLOUDFLARE.id).copy(dnsStrict = true)
+        withTimeout(10_000) { while (override.calls.count { it == "set" } < 5) delay(20) }
+
+        // The last attempt may still be finishing; give it a moment to stop its proxy.
+        withTimeout(5_000) { while (servingProxies() > 1) delay(20) }
+        assertTrue(isServing(confirmedPort))
+    }
+
+    @Test
+    fun `turning strict on stops the old proxy's endpoint lookups reaching the system resolver`() = runBlocking {
+        val systemCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        router.systemResolver = com.fauxx.network.dns.HostResolver { systemCalls.incrementAndGet(); com.fauxx.network.dns.Resolution.NoSuchHost }
+        // An http resolver named by a private NAME: its own address comes from the system resolver.
+        val deadPort = java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1")).use { it.localPort }
+        profile.value = doh(provider = DohPresets.CUSTOM_ID, url = "http://dnsbox.lan:$deadPort/dns-query").copy(routeDnsNoise = true)
+        router.start()
+        val oldNoise = router.noiseResolver()!!
+        oldNoise.resolve("example.com")
+        val before = systemCalls.get()
+        assertTrue("fail-open: the endpoint name is looked up on the system resolver", before > 0)
+
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        override.setGate = gate
+        // Strict with a server IP, so the new settings are usable and their set() stays pending.
+        profile.value = profile.value.copy(dnsStrict = true, dohCustomServerIp = "127.0.0.1")
+        withTimeout(5_000) { while (override.calls.count { it == "set" } < 2) delay(20) }
+
+        oldNoise.resolve("example.org")
+        assertEquals("the old proxy no longer asks the system resolver for anything", before, systemCalls.get())
+        gate.complete(Unit)
+        Unit
+    }
+
+    @Test
+    fun `strict mode keeps the WebView on a refusing proxy when the settings cannot be used`() = runBlocking {
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        val goodPort = override.port!!
+
+        // An http resolver named by a private NAME needs its IP in strict mode: nothing may look it up.
+        profile.value = doh(provider = DohPresets.CUSTOM_ID, url = "http://pihole.lan/dns-query").copy(dnsStrict = true)
+        withTimeout(5_000) { while (override.port == goodPort) delay(20) }
+        val health = withTimeout(5_000) {
+            var h = router.health.value
+            while (!(h is DnsHealth.Degraded && h.cause == DegradeCause.SETTINGS)) { delay(20); h = router.health.value }
+            h as DnsHealth.Degraded
+        }
+
+        assertTrue("never cleared under a loading page", "clear" !in override.calls)
+        // The WebView is routed, but to a proxy that refuses everything: nothing new is browsed, so
+        // the engine skips the browsing modules rather than logging a failure every tick.
+        assertNotNull(router.browsingBlockedReason())
+        assertTrue(router.browsingBlocked())
+        assertTrue(health.blocked)
+        assertTrue(router.noiseResolver()!!.resolve("localhost") is com.fauxx.network.dns.Resolution.Failure)
+    }
+
+    @Test
+    fun `switching strict mode off restores fail-open routing`() = runBlocking {
+        override.supported = false
+        profile.value = doh().copy(dnsStrict = true)
+        router.start()
+        assertNotNull(router.browsingBlockedReason())
+
+        profile.value = doh().copy(dnsStrict = false)
+        withTimeout(5_000) { while (router.browsingBlockedReason() != null) delay(20) }
+        assertEquals(DnsHealth.Off, router.health.value)
+    }
+
+    // --- http:// resolvers (#334) ---
+
+    @Test
+    fun `an http resolver with a public server IP is refused`() = runBlocking {
+        profile.value = doh(provider = DohPresets.CUSTOM_ID, url = "http://pihole.lan/dns-query").copy(dohCustomServerIp = "9.9.9.9")
+        router.start()
+        assertTrue(override.calls.isEmpty())
+        assertTrue(router.health.value is DnsHealth.Degraded)
+    }
+
+    @Test
+    fun `an http resolver on the private network routes through the proxy`() = runBlocking {
+        profile.value = doh(provider = DohPresets.CUSTOM_ID, url = "http://pihole.lan/dns-query").copy(dohCustomServerIp = "192.168.1.2")
+        router.start()
+        assertNotNull(override.port)
+        assertEquals(DnsHealth.Healthy, router.health.value)
     }
 
     @Test
@@ -341,9 +720,11 @@ class CustomDnsRouterTest {
         return server to certificate
     }
 
+    // The server IP keeps "localhost" from being looked up over the default preset's DoH, a real
+    // network call whose 5 s timeout matches the tests' own and made them flaky on CI.
     private fun selfSigned(server: okhttp3.mockwebserver.MockWebServer, pinnedKey: String = "") = PoisonProfile(
         dnsMode = DnsMode.DOH, dohProvider = DohPresets.CUSTOM_ID,
-        dohCustomUrl = "https://localhost:${server.port}/dns-query",
+        dohCustomUrl = "https://localhost:${server.port}/dns-query", dohCustomServerIp = "127.0.0.1",
         dohSkipCertificateCheck = true, dohPinnedKey = pinnedKey, routeDnsNoise = true,
     )
 

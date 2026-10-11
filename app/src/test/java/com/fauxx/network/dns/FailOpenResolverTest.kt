@@ -151,4 +151,88 @@ class FailOpenResolverTest {
         straggler.join(5_000)
         assertTrue("a straggler's success must not close the breaker", r.health.value is DnsHealth.Degraded)
     }
+
+    // --- Strict mode (#333) ---
+
+    private val strict = FailOpenResolver(custom, system, clock, failureThreshold = 3, cooldownMs = 60_000L, slowMs = 3_000L, fallsBack = false)
+
+    @Test
+    fun `strict mode fails a lookup the custom resolver cannot answer, and never asks the system`() {
+        customResult = failure
+        val r = strict.resolve("a.example")
+        assertTrue(r is Resolution.Failure && r.cause is StrictDnsException)
+        assertEquals(0, systemCalls)
+    }
+
+    @Test
+    fun `strict mode's open breaker fails at once, without the system or the custom resolver`() {
+        customResult = failure
+        repeat(3) { strict.resolve("a.example") }
+        val health = strict.health.value
+        assertTrue("degraded, and saying lookups fail", health is DnsHealth.Degraded && health.blocked)
+
+        val callsBefore = customCalls
+        assertTrue(strict.resolve("b.example") is Resolution.Failure)
+        assertEquals(callsBefore, customCalls)
+        assertEquals("strict mode must never touch the system resolver", 0, systemCalls)
+    }
+
+    @Test
+    fun `strict mode still uses good answers and recovers like the fail-open breaker`() {
+        assertEquals(customAddr, strict.resolve("a.example"))
+        customResult = failure
+        repeat(3) { strict.resolve("a.example") }
+        clock.nowMs += 60_001L
+        customResult = customAddr
+        assertEquals(customAddr, strict.resolve("a.example"))
+        assertEquals(DnsHealth.Healthy, strict.health.value)
+        assertEquals(0, systemCalls)
+    }
+
+    @Test
+    fun `strict mode uses slow answers without opening the breaker`() {
+        // There is nothing to fall back to, so a breaker opened for slowness would only turn a slow
+        // resolver into a full outage per cooldown.
+        customDelayMs = 3_500L
+        repeat(5) { assertEquals(customAddr, strict.resolve("a.example")) }
+        assertEquals(DnsHealth.Healthy, strict.health.value)
+        assertEquals(5, customCalls)
+    }
+
+    @Test
+    fun `strict mode can be switched on in a live resolver`() {
+        customResult = failure
+        resolver.fallsBack = false
+        assertTrue(resolver.resolve("a.example") is Resolution.Failure)
+        assertEquals(0, systemCalls)
+    }
+
+    @Test
+    fun `the hostname being looked up never reaches the logs or the health reason`() {
+        val logged = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val tree = object : timber.log.Timber.Tree() {
+            override fun log(priority: Int, tag: String?, message: String, t: Throwable?) { logged += message }
+        }
+        timber.log.Timber.plant(tree)
+        try {
+            // OkHttp's DoH reports a failed lookup with the hostname as the exception message.
+            customResult = Resolution.Failure(java.net.UnknownHostException("secret-site.example"))
+            repeat(3) { resolver.resolve("secret-site.example") }
+            val health = resolver.health.value
+            assertTrue(health is DnsHealth.Degraded)
+            assertTrue((health as DnsHealth.Degraded).reason, "secret-site" !in health.reason)
+            assertTrue(logged.isNotEmpty())
+            assertTrue(logged.toString(), logged.none { "secret-site" in it })
+        } finally {
+            timber.log.Timber.uproot(tree)
+        }
+    }
+
+    @Test
+    fun `a fail-open degradation is not reported as blocked`() {
+        customResult = failure
+        repeat(3) { resolver.resolve("a.example") }
+        val health = resolver.health.value
+        assertTrue(health is DnsHealth.Degraded && !health.blocked)
+    }
 }

@@ -98,6 +98,10 @@ fun FaqScreen(onBack: () -> Unit) {
             question = stringResource(R.string.faq_q6_question),
             answer = stringResource(R.string.faq_q6_answer)
         )
+        FaqEntry(
+            question = stringResource(R.string.faq_dns_question),
+            answer = stringResource(R.string.faq_dns_answer)
+        )
 
         Spacer(Modifier.height(16.dp))
     }

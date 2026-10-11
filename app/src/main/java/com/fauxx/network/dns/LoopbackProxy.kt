@@ -374,16 +374,14 @@ class LoopbackProxy(
             if (address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress ||
                 address.isSiteLocalAddress || address.isMulticastAddress
             ) return false
-            val b = address.address
             return when (address) {
                 is Inet4Address -> {
-                    val first = b[0].toInt() and 0xFF
-                    val second = b[1].toInt() and 0xFF
+                    val first = address.address[0].toInt() and 0xFF
                     !(first == 0 || // 0.0.0.0/8, sinkhole answers included
-                        (first == 100 && second in 64..127) || // CGNAT 100.64.0.0/10
+                        AddressScope.isCgnat(address) ||
                         first >= 240) // reserved and broadcast
                 }
-                is Inet6Address -> (b[0].toInt() and 0xFE) != 0xFC // ULA fc00::/7
+                is Inet6Address -> !AddressScope.isUniqueLocal(address)
                 else -> false
             }
         }

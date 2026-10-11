@@ -61,6 +61,25 @@ interface WebViewProxyOverride {
 }
 
 /**
+ * Whether Fauxx may browse at all right now (#333). Strict custom DNS promises that no lookup for
+ * a site Fauxx visits reaches the device's DNS, and the only thing that keeps that promise is the
+ * WebView being routed through Fauxx's proxy. When it cannot be (a WebView without
+ * `PROXY_OVERRIDE`, a proxy that would not start, an override WebView refused), the pool refuses
+ * to hand out a WebView instead of browsing direct.
+ */
+fun interface PhantomBrowsingGate {
+    /** Why browsing is blocked, or null when it may go ahead. */
+    fun browsingBlockedReason(): String?
+
+    companion object {
+        val NONE = PhantomBrowsingGate { null }
+    }
+}
+
+/** Thrown by the pool while a [PhantomBrowsingGate] blocks browsing; modules log it as a failed action. */
+class BrowsingBlockedException(reason: String) : IllegalStateException(reason)
+
+/**
  * Answers the loopback proxy's password challenge inside [PhantomWebViewClient] (#227). Returns the
  * user/secret pair only for the proxy's own challenge, so a site's HTTP auth never sees them.
  */

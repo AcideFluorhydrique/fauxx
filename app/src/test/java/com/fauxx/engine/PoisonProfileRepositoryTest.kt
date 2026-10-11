@@ -116,6 +116,7 @@ class PoisonProfileRepositoryTest {
             plainDnsServer = "9.9.9.9:5353",                 // default empty
             routeDnsNoise = true,                            // default false
             preferredCustomDnsMode = com.fauxx.data.model.DnsMode.PLAIN, // default DOH
+            dnsStrict = true,                                // default false
         )
 
         runBlocking { repo.saveProfile(input) }

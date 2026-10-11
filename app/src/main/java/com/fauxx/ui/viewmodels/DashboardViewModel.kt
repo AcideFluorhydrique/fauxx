@@ -31,6 +31,7 @@ import com.fauxx.engine.dns.CustomDns
 import com.fauxx.engine.webview.WebViewCapabilities
 import com.fauxx.engine.webview.WebViewDiagnostics
 import com.fauxx.engine.webview.WebViewUpdateAdvice
+import com.fauxx.network.dns.DegradeCause
 import com.fauxx.network.dns.DnsHealth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,7 +51,20 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** The quiet custom-DNS dashboard line (#227). */
-enum class CustomDnsNotice { FALLBACK, INTERCEPTED, CERTIFICATE_CHANGED }
+enum class CustomDnsNotice {
+    FALLBACK,
+
+    /** Strict mode (#333): pages are not loading, because the resolver is not answering... */
+    BLOCKED_RESOLVER,
+
+    /** ...because Fauxx's WebView cannot be routed through the proxy... */
+    BLOCKED_ROUTING,
+
+    /** ...or because the saved settings are incomplete. */
+    BLOCKED_SETTINGS,
+    INTERCEPTED,
+    CERTIFICATE_CHANGED,
+}
 
 /** The dashboard's WebView warning: what was found, and where to send the user (#332, #336). */
 data class WebViewWarning(val found: WebViewDiagnostics, val advice: WebViewUpdateAdvice)
@@ -106,13 +120,21 @@ class DashboardViewModel @Inject constructor(
      * Which quiet custom-DNS line to show, or null for none (#227). [CustomDnsNotice.INTERCEPTED] is
      * worded apart because then Fauxx is NOT on the device's DNS: another app is answering.
      * [CustomDnsNotice.CERTIFICATE_CHANGED] is worded apart because the user may have caused it
-     * (a replaced certificate) and has a fix to make. Shown as one quiet line, per the owner's
-     * fail-open decision: browsing continues, the user just gets to know.
+     * (a replaced certificate) and has a fix to make. The BLOCKED lines are strict mode (#333):
+     * lookups fail instead of falling back, so Fauxx's pages are not loading, which outranks every
+     * other line, worded by cause so the user knows what to fix. Shown as one quiet line, per the
+     * owner's fail-open decision: browsing continues (unless the user chose strict mode), the user
+     * just gets to know.
      */
     val customDnsNotice: StateFlow<CustomDnsNotice?> = customDns.health
         .map { h ->
             when {
                 h !is DnsHealth.Degraded -> null
+                h.blocked -> when (h.cause) {
+                    DegradeCause.RESOLVER -> CustomDnsNotice.BLOCKED_RESOLVER
+                    DegradeCause.ROUTING -> CustomDnsNotice.BLOCKED_ROUTING
+                    DegradeCause.SETTINGS -> CustomDnsNotice.BLOCKED_SETTINGS
+                }
                 h.intercepted -> CustomDnsNotice.INTERCEPTED
                 h.certificateChanged -> CustomDnsNotice.CERTIFICATE_CHANGED
                 else -> CustomDnsNotice.FALLBACK

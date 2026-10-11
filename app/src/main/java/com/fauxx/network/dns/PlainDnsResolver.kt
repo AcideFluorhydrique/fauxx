@@ -72,36 +72,26 @@ data class PlainDnsServer(val address: InetAddress, val port: Int) {
 }
 
 /**
- * Plain DNS to a server the user chose (#227, PR 2). MiniDNS builds and parses the messages (a
- * mature parser for untrusted packets); the network I/O is done here, because MiniDNS's own
- * transport turned out to be a poor fit (both reviewed against its 1.1.1 bytecode):
- * - it falls back to TCP on ANY UDP failure, a lost packet included, so one dropped datagram cost
- *   the full timeout and then a TCP attempt: a healthy server read as "slow" and tripped the
- *   fail-open breaker on lossy mobile networks;
- * - it reads UDP replies on an unconnected socket and aborts the query on the first packet with the
- *   wrong ID, so any stray datagram turned a good lookup into a failure.
+ * The resolving half shared by the resolvers that build their own DNS messages: plain DNS
+ * ([PlainDnsResolver], #227) and cleartext DNS-over-HTTPS ([CleartextDohResolver], #334). A and
+ * AAAA are asked in parallel, each through [exchange] within one overall [deadlineMs], and the
+ * answers combined.
  *
- * Here: a UDP socket CONNECTED to the server (the kernel drops other sources), one retransmit,
- * replies that do not match (ID, QR bit, question) discarded rather than fatal, TCP only when the
- * reply is truncated, and one overall [deadlineMs] for the whole lookup, kept under the breaker's
- * 3 s slow threshold. A and AAAA are asked in parallel.
- *
- * Contract, as for DoH: an ANSWER is final (addresses; or NXDOMAIN / no records, which is
+ * Contract, as for OkHttp's DoH: an ANSWER is final (addresses; or NXDOMAIN / no records, which is
  * [Resolution.NoSuchHost]); only a lookup where no type got an answer is a [Resolution.Failure].
  * A partial answer counts: an A answer is kept when the AAAA query is dropped or refused, which
  * some middleboxes do, instead of sending the name to the system resolver.
  */
-class PlainDnsResolver(
-    private val server: PlainDnsServer,
-    private val attemptTimeoutMs: Int = 1_000,
-    private val deadlineMs: Long = 2_500L,
-) : HostResolver {
+abstract class MessageResolver(private val deadlineMs: Long) : HostResolver {
 
     private sealed interface Outcome {
         data class Answer(val addresses: List<InetAddress>) : Outcome
         data object NoName : Outcome
         data class Fail(val cause: Throwable) : Outcome
     }
+
+    /** Send one query for [question] and return the matching reply, by [deadline] (`System.nanoTime`). */
+    protected abstract fun exchange(question: Question, deadline: Long): DnsMessage
 
     override fun resolve(host: String): Resolution {
         val questions = try {
@@ -147,7 +137,42 @@ class PlainDnsResolver(
         Outcome.Fail(e)
     }
 
-    private fun exchange(question: Question, deadline: Long): DnsMessage {
+    /** A real reply to THIS query: same ID, the response bit set, and the same question. */
+    protected fun matches(query: DnsMessage, reply: DnsMessage): Boolean =
+        reply.id == query.id && reply.qr && reply.questions == query.questions
+
+    private companion object {
+        const val GRACE_MS = 500L
+
+        /** Daemon threads for the parallel A/AAAA queries; bounded by the proxy's own concurrency. */
+        val EXECUTOR: ExecutorService = Executors.newCachedThreadPool { r ->
+            Thread(r, "fauxx-dns-query").apply { isDaemon = true }
+        }
+    }
+}
+
+/**
+ * Plain DNS to a server the user chose (#227, PR 2). MiniDNS builds and parses the messages (a
+ * mature parser for untrusted packets); the network I/O is done here, because MiniDNS's own
+ * transport turned out to be a poor fit (both reviewed against its 1.1.1 bytecode):
+ * - it falls back to TCP on ANY UDP failure, a lost packet included, so one dropped datagram cost
+ *   the full timeout and then a TCP attempt: a healthy server read as "slow" and tripped the
+ *   fail-open breaker on lossy mobile networks;
+ * - it reads UDP replies on an unconnected socket and aborts the query on the first packet with the
+ *   wrong ID, so any stray datagram turned a good lookup into a failure.
+ *
+ * Here: a UDP socket CONNECTED to the server (the kernel drops other sources), one retransmit,
+ * replies that do not match (ID, QR bit, question) discarded rather than fatal, TCP only when the
+ * reply is truncated, and one overall deadline for the whole lookup, kept under the breaker's
+ * 3 s slow threshold. Asking A and AAAA and combining the answers is [MessageResolver]'s job.
+ */
+class PlainDnsResolver(
+    private val server: PlainDnsServer,
+    private val attemptTimeoutMs: Int = 1_000,
+    deadlineMs: Long = 2_500L,
+) : MessageResolver(deadlineMs) {
+
+    override fun exchange(question: Question, deadline: Long): DnsMessage {
         val query = DnsMessage.builder()
             .setQuestion(question)
             .setRecursionDesired(true)
@@ -206,20 +231,10 @@ class PlainDnsResolver(
         }
     }
 
-    /** A real reply to THIS query: same ID, the response bit set, and the same question. */
-    private fun matches(query: DnsMessage, reply: DnsMessage): Boolean =
-        reply.id == query.id && reply.qr && reply.questions == query.questions
-
     private companion object {
         const val UDP_ATTEMPTS = 2
         const val UDP_BUFFER_BYTES = 4_096
-        const val GRACE_MS = 500L
         val RANDOM = SecureRandom()
-
-        /** Daemon threads for the parallel A/AAAA queries; bounded by the proxy's own concurrency. */
-        val EXECUTOR: ExecutorService = Executors.newCachedThreadPool { r ->
-            Thread(r, "fauxx-plain-dns").apply { isDaemon = true }
-        }
     }
 }
 

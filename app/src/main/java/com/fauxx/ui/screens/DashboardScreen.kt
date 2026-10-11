@@ -229,13 +229,16 @@ fun DashboardScreen(
         // that actually exists for it: Play for Google's WebView, the system for everything else.
         webViewWarning?.let { warning -> WebViewWarningCard(warning) }
 
-        // Custom DNS fell back to the device's DNS (#227). One quiet line, not a warning card:
-        // nothing is broken, browsing continues, the user just gets to know.
+        // Custom DNS fell back to the device's DNS (#227), or in strict mode stopped Fauxx's
+        // browsing instead (#333). One quiet line, not a warning card: the user just gets to know.
         customDnsNotice?.let { notice ->
             Text(
                 text = stringResource(
                     when (notice) {
                         CustomDnsNotice.FALLBACK -> R.string.dashboard_custom_dns_degraded
+                        CustomDnsNotice.BLOCKED_RESOLVER -> R.string.dashboard_custom_dns_blocked
+                        CustomDnsNotice.BLOCKED_ROUTING -> R.string.dashboard_custom_dns_blocked_routing
+                        CustomDnsNotice.BLOCKED_SETTINGS -> R.string.dashboard_custom_dns_blocked_settings
                         CustomDnsNotice.INTERCEPTED -> R.string.dashboard_custom_dns_intercepted
                         CustomDnsNotice.CERTIFICATE_CHANGED -> R.string.dashboard_custom_dns_certificate_changed
                     }
