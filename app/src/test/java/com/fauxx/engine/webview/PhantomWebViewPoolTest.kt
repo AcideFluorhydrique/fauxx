@@ -1,7 +1,12 @@
 package com.fauxx.engine.webview
 
+import android.net.Uri
 import android.os.Looper
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.fauxx.data.db.LogMetadata
 import com.fauxx.data.crawllist.DomainBlocklist
 import io.mockk.every
 import io.mockk.mockk
@@ -291,6 +296,100 @@ class PhantomWebViewPoolTest {
         val second = drive { pool.acquire() }
         val tags = setOf(first.tag as String, second.tag as String)
         assertEquals("a null-tag release must not alter the pool", setOf("pool_0", "pool_1"), tags)
+    }
+
+    @Test
+    fun `tracker counts reach the action-log metadata, then the verdict on release (#341)`() {
+        val reachability = TrackerReachability(
+            windowSize = 10, minAttempts = 1, minVisits = 1, flagAt = 0.6, clearBelow = 0.3,
+        )
+        pool = PhantomWebViewPool(
+            RuntimeEnvironment.getApplication(),
+            mockk<DomainBlocklist>(relaxed = true),
+            PersonaJarStore(),
+            identity,
+            trackerHosts = TrackerHosts { setOf("doubleclick.net") },
+            trackerReachability = reachability,
+        )
+        drive { pool.initialize() }
+
+        val wv = drive { pool.acquire() }
+        val client = shadowOf(wv).webViewClient
+        val reached = trackerRequest("https://doubleclick.net/a.js")
+        val blocked = trackerRequest("https://doubleclick.net/b.js")
+        client.shouldInterceptRequest(wv, reached)
+        client.shouldInterceptRequest(wv, blocked)
+        client.onReceivedError(wv, blocked, hostLookupError())
+
+        val metadata = LogMetadata.parse(pool.captureMetadata(wv, "https://news.example/")).toMap()
+        assertEquals("2", metadata[LogMetadata.TRACKER_REQUESTS])
+        assertEquals("1", metadata[LogMetadata.TRACKER_REQUESTS_BLOCKED])
+        assertEquals(
+            "nothing is judged until the visit is over",
+            TrackerReachabilityState.NOT_ENOUGH_DATA, reachability.state.value,
+        )
+
+        drive { pool.release(wv) }
+        assertEquals("1 of 2 blocked is under the flag", TrackerReachabilityState.OK, reachability.state.value)
+
+        // The next visit starts from zero, and one that made no tracker requests shows no tracker rows.
+        val next = drive { pool.acquire() }
+        try {
+            val nextMetadata = LogMetadata.parse(pool.captureMetadata(next, "https://news.example/")).toMap()
+            assertNull(nextMetadata[LogMetadata.TRACKER_REQUESTS])
+            assertNull(nextMetadata[LogMetadata.TRACKER_REQUESTS_BLOCKED])
+        } finally {
+            drive { pool.release(next) }
+        }
+    }
+
+    @Test
+    fun `tracker image requests follow the image setting (#341)`() {
+        var loadImages = false
+        pool = PhantomWebViewPool(
+            RuntimeEnvironment.getApplication(),
+            mockk<DomainBlocklist>(relaxed = true),
+            PersonaJarStore(),
+            identity,
+            object : PhantomBrowsingPrefs {
+                override fun loadImages(): Boolean = loadImages
+            },
+            trackerHosts = TrackerHosts { setOf("doubleclick.net") },
+        )
+        drive { pool.initialize() }
+        val pixel = trackerRequest("https://doubleclick.net/px.gif", accept = "image/webp,*/*")
+
+        var wv = drive { pool.acquire() }
+        shadowOf(wv).webViewClient.shouldInterceptRequest(wv, pixel)
+        assertNull(
+            "an image WebView will not fetch is not an attempt",
+            LogMetadata.parse(pool.captureMetadata(wv, "https://news.example/")).toMap()[LogMetadata.TRACKER_REQUESTS],
+        )
+        drive { pool.release(wv) }
+
+        loadImages = true
+        wv = drive { pool.acquire() }
+        shadowOf(wv).webViewClient.shouldInterceptRequest(wv, pixel)
+        assertEquals(
+            "1",
+            LogMetadata.parse(pool.captureMetadata(wv, "https://news.example/")).toMap()[LogMetadata.TRACKER_REQUESTS],
+        )
+        drive { pool.release(wv) }
+    }
+
+    private fun trackerRequest(url: String, accept: String = "*/*"): WebResourceRequest {
+        val req: WebResourceRequest = mockk()
+        every { req.url } returns Uri.parse(url)
+        every { req.requestHeaders } returns mapOf("Accept" to accept)
+        every { req.isForMainFrame } returns false
+        return req
+    }
+
+    private fun hostLookupError(): WebResourceError {
+        val err: WebResourceError = mockk()
+        every { err.errorCode } returns WebViewClient.ERROR_HOST_LOOKUP
+        every { err.description } returns "net::ERR_NAME_NOT_RESOLVED"
+        return err
     }
 
     @Test

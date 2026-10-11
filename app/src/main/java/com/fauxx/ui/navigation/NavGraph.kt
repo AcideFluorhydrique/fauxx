@@ -141,7 +141,11 @@ fun FauxxNavGraph(showOnboarding: Boolean) {
                         }
                     )
                 }
-                composable(Screen.Dashboard.route) { DashboardScreen() }
+                composable(Screen.Dashboard.route) {
+                    DashboardScreen(
+                        onOpenFaq = { navController.navigate(Screen.Faq.route) { launchSingleTop = true } },
+                    )
+                }
                 composable(Screen.Targeting.route) {
                     TargetingScreen(
                         onEditProfile = { navController.navigate(Screen.Onboarding.route) }

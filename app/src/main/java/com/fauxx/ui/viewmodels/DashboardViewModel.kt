@@ -28,6 +28,10 @@ import com.fauxx.util.SystemClockImpl
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.fauxx.engine.dns.CustomDns
+import com.fauxx.engine.webview.TrackerBlockKind
+import com.fauxx.engine.webview.TrackerBlockSource
+import com.fauxx.ui.InstalledApps
+import com.fauxx.engine.webview.TrackerBlockVerdict
 import com.fauxx.engine.webview.WebViewCapabilities
 import com.fauxx.engine.webview.WebViewDiagnostics
 import com.fauxx.engine.webview.WebViewUpdateAdvice
@@ -64,6 +68,38 @@ enum class CustomDnsNotice {
     BLOCKED_SETTINGS,
     INTERCEPTED,
     CERTIFICATE_CHANGED,
+}
+
+/**
+ * The quiet blocked-trackers dashboard line (#341): something on the phone is stopping Fauxx's
+ * requests to trackers, which is where the decoy signal travels. Worded by what will fix it.
+ */
+enum class TrackerBlockNotice {
+    /**
+     * A blocker app on the phone: a VPN carries Fauxx's traffic and either declares its own DNS
+     * (AdGuard, Rethink, Blokada) or the blocks are at the connection. Excluding Fauxx from it is the
+     * fix; Custom DNS is not mentioned, because such apps also block by the name in the TLS hello.
+     */
+    BLOCKER_APP,
+
+    /** DNS filtering on the phone or network (Pi-hole, NextDNS, Private DNS). Exclude Fauxx, or Custom DNS. */
+    NETWORK,
+
+    /**
+     * Connections to trackers are cut and no VPN is involved: a router firewall or similar.
+     * Custom DNS cannot get around that, so the line does not suggest it.
+     */
+    NETWORK_CONNECTION,
+
+    /** Custom DNS is working: the resolver the user chose may filter trackers itself. */
+    CUSTOM_RESOLVER,
+
+    /**
+     * Nothing confirmed, but DuckDuckGo is installed and a VPN covers Fauxx: App Tracking Protection
+     * may be blocking. It cannot be confirmed from inside Fauxx (see [com.fauxx.engine.webview.TrackerDnsProbe]),
+     * so the line says "may" and can be dismissed.
+     */
+    DUCKDUCKGO_HINT,
 }
 
 /** The dashboard's WebView warning: what was found, and where to send the user (#332, #336). */
@@ -114,6 +150,8 @@ class DashboardViewModel @Inject constructor(
     private val clock: Clock = SystemClockImpl(),
     private val webViewCapabilities: WebViewCapabilities = WebViewCapabilities.SYSTEM,
     customDns: CustomDns = CustomDns.NONE,
+    private val trackerBlocks: TrackerBlockSource = TrackerBlockSource.NONE,
+    private val installedApps: InstalledApps = InstalledApps.NONE,
 ) : ViewModel() {
 
     /**
@@ -186,6 +224,15 @@ class DashboardViewModel @Inject constructor(
                 publishWebViewWarning()
             }
         }
+        // #341: DuckDuckGo may have been installed or removed, a VPN switched, meanwhile.
+        refreshTrackerChecks()
+    }
+
+    private fun refreshTrackerChecks() {
+        viewModelScope.launch(Dispatchers.Default) {
+            trackerBlocks.refresh()
+            _duckDuckGoInstalled.value = installedApps.isInstalled(DUCKDUCKGO_PACKAGE)
+        }
     }
 
     /** Caller holds [webViewLock]. */
@@ -195,6 +242,30 @@ class DashboardViewModel @Inject constructor(
     }
 
     private val _enabled = MutableStateFlow(profileRepo.getProfile().enabled)
+
+    /** Whether the DuckDuckGo app is installed (#341); read off the main thread, on start and resume. */
+    private val _duckDuckGoInstalled = MutableStateFlow(false)
+
+    /**
+     * Which quiet blocked-trackers line to show, or null for none (#341). See [trackerNoticeFor]
+     * for how it shares the dashboard with the custom-DNS line.
+     */
+    val trackerBlockNotice: StateFlow<TrackerBlockNotice?> =
+        combine(
+            _enabled,
+            trackerBlocks.verdict,
+            customDns.health,
+            _duckDuckGoInstalled,
+            dataStore.data.map { it[PreferenceKeys.DDG_TRACKER_HINT_DISMISSED] == true },
+            ::trackerNoticeFor,
+        ).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Persists the user's choice to dismiss the DuckDuckGo hint (#341). Stronger lines still show. */
+    fun dismissDuckDuckGoHint() {
+        viewModelScope.launch {
+            dataStore.edit { it[PreferenceKeys.DDG_TRACKER_HINT_DISMISSED] = true }
+        }
+    }
 
     /** Whether to show the consent dialog (first-time activation). */
     private val _showConsentDialog = MutableStateFlow(false)
@@ -351,6 +422,50 @@ class DashboardViewModel @Inject constructor(
         }
 
     companion object {
+        /** DuckDuckGo's Android app, which carries App Tracking Protection (#341). */
+        const val DUCKDUCKGO_PACKAGE = "com.duckduckgo.mobile.android"
+
+        /**
+         * The blocked-trackers line for the current state (#341), or null.
+         *
+         * - Only while protection is on: with the engine off nothing is browsing, and an old verdict
+         *   would be about traffic that is not happening.
+         * - A confirmed block outranks the DuckDuckGo hint. It is hidden while custom DNS is
+         *   degraded: that line ([customDnsNotice]) is already showing and names the actual cause.
+         * - A VPN carries Fauxx's traffic and either declares its own DNS servers or the blocks are at
+         *   the connection: a blocker app, [TrackerBlockNotice.BLOCKER_APP]. A VPN without DNS servers
+         *   (DuckDuckGo's) leaves Fauxx's lookups on the underlying network, so a DNS-level block
+         *   there is the network's, worded as below.
+         * - Custom DNS working: only the chosen resolver is left to blame,
+         *   [TrackerBlockNotice.CUSTOM_RESOLVER].
+         * - Otherwise [TrackerBlockNotice.NETWORK] for DNS-level blocks, and
+         *   [TrackerBlockNotice.NETWORK_CONNECTION] for connection-level ones, which Custom DNS
+         *   cannot get around.
+         * - Nothing confirmed (or the confirmed line hidden): DuckDuckGo installed and a VPN covering
+         *   Fauxx gives the softer [TrackerBlockNotice.DUCKDUCKGO_HINT], unless dismissed.
+         */
+        internal fun trackerNoticeFor(
+            enabled: Boolean,
+            verdict: TrackerBlockVerdict,
+            health: DnsHealth,
+            duckDuckGoInstalled: Boolean,
+            duckDuckGoHintDismissed: Boolean,
+        ): TrackerBlockNotice? {
+            if (!enabled) return null
+            val confirmed = if (!verdict.blocked || health is DnsHealth.Degraded) {
+                null
+            } else when {
+                verdict.vpn.active && (verdict.vpn.declaresDns || verdict.kind == TrackerBlockKind.CONNECTION) ->
+                    TrackerBlockNotice.BLOCKER_APP
+                health is DnsHealth.Healthy -> TrackerBlockNotice.CUSTOM_RESOLVER
+                verdict.kind == TrackerBlockKind.CONNECTION -> TrackerBlockNotice.NETWORK_CONNECTION
+                else -> TrackerBlockNotice.NETWORK
+            }
+            return confirmed ?: TrackerBlockNotice.DUCKDUCKGO_HINT.takeIf {
+                duckDuckGoInstalled && verdict.vpn.active && !duckDuckGoHintDismissed
+            }
+        }
+
         private const val DAY_MS = 24 * 60 * 60 * 1000L
         private const val WEEK_MS = 7 * DAY_MS
         /** How often the rolling-window boundary is recomputed (so the window slides). */

@@ -18,6 +18,9 @@ object LogMetadata {
     const val PAGE_TITLE = "Page title"
     const val COOKIES_IN_JAR = "Cookies in jar"
     const val RESOURCES_LOADED = "Resources loaded"
+    // #341: requests to known tracker hosts, and how many failed at the network level. Counts only.
+    const val TRACKER_REQUESTS = "Tracker requests"
+    const val TRACKER_REQUESTS_BLOCKED = "Tracker requests blocked"
     const val DNS_IPS = "Resolved IPs"
     const val SEARCH_ENGINE = "Engine"
     const val HTTP_STATUS = "HTTP status"

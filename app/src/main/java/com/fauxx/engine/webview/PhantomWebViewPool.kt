@@ -20,6 +20,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
@@ -122,6 +123,8 @@ class PhantomWebViewPool @Inject constructor(
     private val browsingPrefs: PhantomBrowsingPrefs = PhantomBrowsingPrefs.NONE,
     private val proxyAuth: PhantomProxyAuth = PhantomProxyAuth.NONE,
     private val browsingGate: PhantomBrowsingGate = PhantomBrowsingGate.NONE,
+    private val trackerHosts: TrackerHosts = TrackerHosts { emptySet() },
+    private val trackerReachability: TrackerReachability = TrackerReachability(),
 ) {
     private val pool = mutableListOf<WebView>()
     private var initialized = false
@@ -141,6 +144,16 @@ class PhantomWebViewPool @Inject constructor(
      * reset on acquire, read by modules via [lastLoadError] to decide the action's success.
      */
     private val loadErrors = ConcurrentHashMap<String, AtomicReference<String?>>()
+
+    /**
+     * Issue #341: per-WebView tracker requests and failures since [acquire]. Mirrors
+     * [resourceCounters]; reported in the action-log metadata and, on [release], handed to
+     * [TrackerReachability], which decides whether the dashboard says trackers are being blocked.
+     */
+    private val trackerCounters = ConcurrentHashMap<String, TrackerVisitCounter>()
+
+    /** Issue #341: whether each WebView has images off, set with the policy in [applyImagePolicy]. */
+    private val imagesOff = ConcurrentHashMap<String, AtomicBoolean>()
 
     /** Total renderer-process deaths recovered from (issue #210), for diagnostics. */
     private val rendererDeaths = AtomicInteger(0)
@@ -438,6 +451,7 @@ class PhantomWebViewPool @Inject constructor(
                     val wv = pool.first { acquired.putIfAbsent(it.tag as String, true) == null }
                     resourceCounters[wv.tag as String]?.set(0)
                     loadErrors[wv.tag as String]?.set(null)
+                    trackerCounters[wv.tag as String]?.reset()
                     applyIdentity(wv)
                     applyImagePolicy(wv)
                     wv
@@ -480,6 +494,8 @@ class PhantomWebViewPool @Inject constructor(
      */
     fun clearLoadError(webView: WebView) {
         runCatching { loadErrors[webView.tag as? String]?.set(null) }
+        // #341: likewise, one failed navigation must not discard the session's tracker counts.
+        runCatching { trackerCounters[webView.tag as? String]?.clearMainFrameFailed() }
     }
 
     fun captureMetadata(webView: WebView, url: String, vararg extra: Pair<String, String?>): String? {
@@ -493,11 +509,18 @@ class PhantomWebViewPool @Inject constructor(
         val resourceCount = runCatching {
             resourceCounters[webView.tag as? String]?.get()
         }.getOrNull()
+        // Issue #341: counts only, never which trackers. Omitted when the visit made no tracker
+        // requests; "blocked" is shown even when 0, since then it says the trackers were reached.
+        val trackers = runCatching {
+            trackerCounters[webView.tag as? String]?.snapshot()
+        }.getOrNull()?.takeIf { it.attempted > 0 }
         return LogMetadata.toJson(
             *extra,
             LogMetadata.PAGE_TITLE to title,
             LogMetadata.COOKIES_IN_JAR to cookieCount?.toString(),
             LogMetadata.RESOURCES_LOADED to resourceCount?.takeIf { it > 0 }?.toString(),
+            LogMetadata.TRACKER_REQUESTS to trackers?.attempted?.toString(),
+            LogMetadata.TRACKER_REQUESTS_BLOCKED to trackers?.blocked?.toString(),
         )
     }
 
@@ -510,6 +533,14 @@ class PhantomWebViewPool @Inject constructor(
      */
     suspend fun release(webView: WebView) {
         val tag = webView.tag as? String ?: return
+        // Issue #341: the visit is over; hand its tracker counts over before about:blank. Reset
+        // here too, not only on acquire, so a doubled release cannot count the visit twice.
+        trackerCounters[tag]?.let { counter ->
+            runCatching {
+                trackerReachability.recordVisit(counter.snapshot())
+                counter.reset()
+            }
+        }
         try {
             withTimeoutOrNull(MAIN_OP_TIMEOUT_MS) {
                 withContext(Dispatchers.Main) {
@@ -523,6 +554,9 @@ class PhantomWebViewPool @Inject constructor(
                         webView.evaluateJavascript("document.open();document.close();", null)
                         webView.loadUrl("about:blank")
                     }
+                    // #341: and again once the page is gone, so late requests from it do not sit
+                    // in an idle WebView's counter until the next acquire.
+                    trackerCounters[tag]?.reset()
                     // Note: WebStorage.getInstance().deleteAllData() is intentionally NOT called
                     // here because it's a global singleton that wipes storage for ALL WebView
                     // instances. Per-WebView cleanup (stopLoading + clearHistory + clearCache +
@@ -638,6 +672,10 @@ class PhantomWebViewPool @Inject constructor(
         resourceCounters[tag] = resourceCounter
         val loadError = AtomicReference<String?>(null)
         loadErrors[tag] = loadError
+        val trackerCounter = TrackerVisitCounter(trackerHosts)
+        trackerCounters[tag] = trackerCounter
+        val imagesBlocked = AtomicBoolean(true)
+        imagesOff[tag] = imagesBlocked
         webView.webViewClient = PhantomWebViewClient(
             blocklist,
             resourceCounter = resourceCounter,
@@ -647,6 +685,8 @@ class PhantomWebViewPool @Inject constructor(
             // Issue #268: record only the FIRST main-frame error of a load. A failed navigation can
             // emit several callbacks, and the first one is the one that describes what went wrong.
             onMainFrameError = { loadError.compareAndSet(null, it) },
+            trackerCounter = trackerCounter,
+            imagesBlocked = imagesBlocked::get,
         )
         webView.isClickable = false
         webView.isFocusable = false
@@ -742,6 +782,7 @@ class PhantomWebViewPool @Inject constructor(
         val load = browsingPrefs.loadImages()
         webView.settings.loadsImagesAutomatically = load
         webView.settings.blockNetworkImage = !load
+        (webView.tag as? String)?.let { imagesOff[it]?.set(!load) }
     }
 
     private fun isSupported(feature: String): Boolean = WebViewCapabilities.isSupported(feature)

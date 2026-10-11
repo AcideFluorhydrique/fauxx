@@ -70,6 +70,7 @@ import com.fauxx.ui.format.displayNameRes
 import com.fauxx.ui.format.personaAgeRangeRes
 import com.fauxx.ui.format.personaProfessionRes
 import com.fauxx.ui.viewmodels.CustomDnsNotice
+import com.fauxx.ui.viewmodels.TrackerBlockNotice
 import com.fauxx.ui.viewmodels.DashboardViewModel
 import com.fauxx.ui.viewmodels.WebViewWarning
 
@@ -79,12 +80,15 @@ import com.fauxx.ui.viewmodels.WebViewWarning
  */
 @Composable
 fun DashboardScreen(
-    viewModel: DashboardViewModel = hiltViewModel()
+    viewModel: DashboardViewModel = hiltViewModel(),
+    /** Opens the FAQ (#341: the blocked-trackers line links to its tracker-blocker entry). */
+    onOpenFaq: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val showConsent by viewModel.showConsentDialog.collectAsState()
     val webViewWarning by viewModel.webViewWarning.collectAsState()
     val customDnsNotice by viewModel.customDnsNotice.collectAsState()
+    val trackerBlockNotice by viewModel.trackerBlockNotice.collectAsState()
     val samsungSleepGuidanceDismissed by viewModel.samsungSleepGuidanceDismissed.collectAsState()
     val context = LocalContext.current
 
@@ -246,6 +250,37 @@ fun DashboardScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        // Fauxx's requests to trackers are being blocked (#341): a tracker blocker on the phone or
+        // network is discarding the decoy signal while pages still load. Same quiet line as above;
+        // tapping it opens the FAQ, whose tracker-blocker entry has the steps for each blocker.
+        trackerBlockNotice?.let { notice ->
+            Column {
+                Text(
+                    text = stringResource(
+                        when (notice) {
+                            TrackerBlockNotice.BLOCKER_APP -> R.string.dashboard_trackers_blocked_app
+                            TrackerBlockNotice.NETWORK -> R.string.dashboard_trackers_blocked_network
+                            TrackerBlockNotice.NETWORK_CONNECTION -> R.string.dashboard_trackers_blocked_connection
+                            TrackerBlockNotice.CUSTOM_RESOLVER -> R.string.dashboard_trackers_blocked_resolver
+                            TrackerBlockNotice.DUCKDUCKGO_HINT -> R.string.dashboard_trackers_ddg_hint
+                        }
+                    ) + " " + stringResource(R.string.dashboard_trackers_blocked_faq),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable(
+                        onClickLabel = stringResource(R.string.help_menu_faq),
+                        onClick = onOpenFaq,
+                    )
+                )
+                // Only the hint can be dismissed: it says "may", the other lines are measured.
+                if (notice == TrackerBlockNotice.DUCKDUCKGO_HINT) {
+                    TextButton(onClick = viewModel::dismissDuckDuckGoHint) {
+                        Text(stringResource(R.string.dashboard_trackers_ddg_hint_dismiss))
+                    }
+                }
+            }
         }
 
         // Health warnings from asset loading

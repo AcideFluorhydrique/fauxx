@@ -8,8 +8,14 @@ import com.fauxx.engine.dns.NetworkChanges
 import com.fauxx.engine.webview.PhantomBrowsingGate
 import com.fauxx.engine.webview.PhantomBrowsingPrefs
 import com.fauxx.engine.webview.PhantomProxyAuth
+import com.fauxx.engine.webview.SystemDnsLookup
+import com.fauxx.engine.webview.TrackerBlockMonitor
+import com.fauxx.engine.webview.TrackerBlockSource
+import com.fauxx.engine.webview.TrackerWatch
+import com.fauxx.engine.webview.VpnStatus
 import com.fauxx.engine.webview.WebViewCapabilities
 import com.fauxx.engine.webview.WebViewProxyOverride
+import com.fauxx.ui.InstalledApps
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -74,6 +80,27 @@ object WebViewModule {
 
     @Provides
     fun providePhantomProxyAuth(router: CustomDnsRouter): PhantomProxyAuth = router
+
+    /** The blocked-tracker check (#341) looks trackers up through the device's own resolver. */
+    @Provides
+    @Singleton
+    fun provideSystemDnsLookup(): SystemDnsLookup = SystemDnsLookup.SYSTEM
+
+    @Provides
+    @Singleton
+    fun provideVpnStatus(@ApplicationContext context: Context): VpnStatus = VpnStatus.system(context)
+
+    /** One monitor serves the engine's lifecycle and the dashboard's verdict (#341). */
+    @Provides
+    fun provideTrackerWatch(monitor: TrackerBlockMonitor): TrackerWatch = monitor
+
+    @Provides
+    fun provideTrackerBlockSource(monitor: TrackerBlockMonitor): TrackerBlockSource = monitor
+
+    /** The dashboard's DuckDuckGo hint (#341) checks whether the app is installed. */
+    @Provides
+    @Singleton
+    fun provideInstalledApps(@ApplicationContext context: Context): InstalledApps = InstalledApps.system(context)
 
     /** Strict custom DNS (#333) keeps the pool from browsing when the WebView is not routed. */
     @Provides

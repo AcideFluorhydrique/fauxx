@@ -55,6 +55,8 @@
          needs package visibility on Android 11+. -->
     <queries>
         <package android:name="com.android.vending" />
+        <!-- #341: the dashboard hints that DuckDuckGo App Tracking Protection may block trackers -->
+        <package android:name="com.duckduckgo.mobile.android" />
     </queries>
 
     <application
