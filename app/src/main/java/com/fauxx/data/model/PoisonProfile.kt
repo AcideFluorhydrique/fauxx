@@ -61,6 +61,10 @@ import com.fauxx.ui.theme.ThemeMode
  * @property routeDnsNoise Whether the DNS-noise module's lookups also go to the custom resolver.
  *   Off by default: DNS noise exists to fill the device's resolver logs (the ISP's or the
  *   network's), and on a custom resolver it fills only that resolver's.
+ * @property dnsStrict "Never fall back to the device's DNS" (#333). Off by default, which keeps the
+ *   owner's fail-open design: while the custom resolver is down, lookups go to the system resolver.
+ *   On, they fail instead, pages do not load until it recovers, and DNS noise goes to the custom
+ *   resolver too, whatever [routeDnsNoise] says. Only meaningful while [dnsMode] is custom.
  * @property excludedSearchEngines Names of search engines the user has opted OUT of poisoning
  *   (issue #281), e.g. a privacy-respecting engine they would rather not send synthetic traffic
  *   to. Stored as exclusions rather than inclusions so the default is empty and any engine added
@@ -102,6 +106,7 @@ data class PoisonProfile(
     val plainDnsServer: String = "",
     val routeDnsNoise: Boolean = false,
     val preferredCustomDnsMode: DnsMode = DnsMode.DOH,
+    val dnsStrict: Boolean = false,
     val excludedSearchEngines: Set<String> = emptySet()
 )
 

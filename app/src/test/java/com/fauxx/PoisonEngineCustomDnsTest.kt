@@ -116,10 +116,52 @@ class PoisonEngineCustomDnsTest {
         set(java.util.Calendar.MILLISECOND, 0)
     }.timeInMillis
 
+    @Test
+    fun `while strict DNS blocks browsing, the browsing modules are skipped quietly, not failed (#333)`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val clock = FakeClock(noonEpochMs())
+        val blocked = java.util.concurrent.atomic.AtomicBoolean(true)
+        val dns = object : CustomDns {
+            override val health: StateFlow<DnsHealth> = MutableStateFlow(DnsHealth.Off)
+            override suspend fun start() {}
+            override suspend fun stop() {}
+            override fun noiseResolver(): com.fauxx.network.dns.HostResolver? = null
+            override fun browsingBlocked(): Boolean = blocked.get()
+        }
+        val cookieCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        val cookie: com.fauxx.engine.modules.CookieSaturationModule = mockk(relaxed = true) {
+            every { isEnabled() } returns true
+            coEvery { onAction(any()) } coAnswers {
+                cookieCalls.incrementAndGet()
+                ActionLogEntity(actionType = ActionType.COOKIE_HARVEST, category = CategoryPool.GAMING, detail = "x", success = true)
+            }
+        }
+        val dnsCalls = java.util.concurrent.atomic.AtomicInteger(0)
+        engine = buildEngine(dns, dispatcher, clock, cookieModule = cookie, dnsCalls = dnsCalls)
+        try {
+            engine.start()
+            advance(clock, 100)
+            // A test context has no network; give the loop one so it actually dispatches.
+            engine.setCachedConstraintStateForTest(transport = com.fauxx.engine.NetworkTransport.WIFI, batteryLevel = 100)
+            advance(clock, 30_000)
+            org.junit.Assert.assertTrue("the loop runs the other modules meanwhile", dnsCalls.get() > 0)
+            assertEquals("no browsing action is even attempted while blocked", 0, cookieCalls.get())
+
+            blocked.set(false)
+            advance(clock, 30_000)
+            org.junit.Assert.assertTrue("browsing resumes once routing is back", cookieCalls.get() > 0)
+        } finally {
+            engine.stop()
+        }
+    }
+
     private fun buildEngine(
         dns: CustomDns,
         loopDispatcher: kotlinx.coroutines.CoroutineDispatcher,
         clock: FakeClock,
+        cookieModule: com.fauxx.engine.modules.CookieSaturationModule =
+            mockk(relaxed = true) { every { isEnabled() } returns false },
+        dnsCalls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(0),
     ): PoisonEngine {
         // Nothing browses; the DNS-noise module takes a second to stop, the way a module closing
         // WebViews does.
@@ -148,15 +190,16 @@ class PoisonEngineCustomDnsTest {
             adModule = module(),
             locationModule = module(),
             fingerprintModule = mockk(relaxed = true) { every { isEnabled() } returns false },
-            cookieModule = mockk(relaxed = true) { every { isEnabled() } returns false },
+            cookieModule = cookieModule,
             appSignalModule = mockk(relaxed = true) { every { isEnabled() } returns false },
             // Enabled so every loop iteration does real work and waits its scheduled delay; with no
             // enabled module the loop would spin in virtual time.
             dnsModule = mockk(relaxed = true) {
                 every { isEnabled() } returns true
-                coEvery { onAction(any()) } returns ActionLogEntity(
-                    actionType = ActionType.DNS_LOOKUP, category = CategoryPool.GAMING, detail = "test", success = true,
-                )
+                coEvery { onAction(any()) } coAnswers {
+                    dnsCalls.incrementAndGet()
+                    ActionLogEntity(actionType = ActionType.DNS_LOOKUP, category = CategoryPool.GAMING, detail = "test", success = true)
+                }
                 coEvery { stop() } coAnswers { delay(1_000) }
             },
             clock = clock,

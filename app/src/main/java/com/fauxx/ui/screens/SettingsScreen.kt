@@ -330,6 +330,7 @@ fun SettingsScreen(
             onSkipCertificateCheckChange = viewModel::setDohSkipCertificateCheck,
             onSavePlainServer = viewModel::savePlainDnsServer,
             onRouteNoiseChange = viewModel::setRouteDnsNoise,
+            onStrictChange = viewModel::setDnsStrict,
         )
 
         // Battery threshold
@@ -626,17 +627,27 @@ private fun CustomDnsCard(
     onSkipCertificateCheckChange: (Boolean) -> Unit,
     onSavePlainServer: (String) -> Boolean,
     onRouteNoiseChange: (Boolean) -> Unit,
+    onStrictChange: (Boolean) -> Boolean,
 ) {
     val enabled = uiState.dnsMode != DnsMode.SYSTEM
     SettingsCard {
+        // A WebView without proxy support cannot use custom DNS, but a setting saved earlier stays
+        // switchable OFF: in strict mode it blocks all browsing (#333), and that must have a way out.
         LabelledSwitch(
             title = stringResource(R.string.settings_dns_title),
             description = stringResource(if (available) R.string.settings_dns_description else R.string.settings_dns_unavailable),
-            checked = enabled && available,
-            enabled = available,
+            checked = enabled,
+            enabled = available || enabled,
             onCheckedChange = onEnabledChange,
         )
-        if (!enabled || !available) return@SettingsCard
+        if (!available) {
+            if (enabled && uiState.dnsStrict) {
+                Spacer(Modifier.height(8.dp))
+                StrictDnsSwitch(uiState, onStrictChange)
+            }
+            return@SettingsCard
+        }
+        if (!enabled) return@SettingsCard
 
         var needsPlainServer by rememberSaveable { mutableStateOf(false) }
         Spacer(Modifier.height(8.dp))
@@ -664,18 +675,46 @@ private fun CustomDnsCard(
         }
 
         Spacer(Modifier.height(8.dp))
+        // Strict mode sends DNS noise to the custom resolver too (#333), so the switch shows that.
         LabelledSwitch(
             title = stringResource(R.string.settings_dns_noise_title),
-            description = stringResource(R.string.settings_dns_noise_description),
-            checked = uiState.routeDnsNoise,
-            enabled = true,
+            description = stringResource(
+                if (uiState.dnsStrict) R.string.settings_dns_noise_strict_description else R.string.settings_dns_noise_description
+            ),
+            checked = uiState.routeDnsNoise || uiState.dnsStrict,
+            enabled = !uiState.dnsStrict,
             onCheckedChange = onRouteNoiseChange,
         )
+        Spacer(Modifier.height(8.dp))
+        StrictDnsSwitch(uiState, onStrictChange)
         Spacer(Modifier.height(8.dp))
         Text(
             stringResource(R.string.settings_dns_help),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/**
+ * "Never fall back to your device's DNS" (#333). Turning it on is refused while the custom
+ * resolver is an http:// one named by a hostname with no server IP, and the reason shown.
+ */
+@Composable
+private fun ColumnScope.StrictDnsSwitch(uiState: SettingsUiState, onStrictChange: (Boolean) -> Boolean) {
+    var needsServerIp by rememberSaveable { mutableStateOf(false) }
+    LabelledSwitch(
+        title = stringResource(R.string.settings_dns_strict_title),
+        description = stringResource(R.string.settings_dns_strict_description),
+        checked = uiState.dnsStrict,
+        enabled = true,
+        onCheckedChange = { needsServerIp = !onStrictChange(it) },
+    )
+    if (needsServerIp && !uiState.dnsStrict) {
+        Text(
+            stringResource(R.string.settings_dns_strict_needs_server_ip),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
         )
     }
 }
@@ -694,6 +733,8 @@ private fun ColumnScope.DohSection(
     var invalidIp by rememberSaveable { mutableStateOf(false) }
     var needsUrl by rememberSaveable { mutableStateOf(false) }
     var ipNeedsUrl by rememberSaveable { mutableStateOf(false) }
+    var publicIpForHttp by rememberSaveable { mutableStateOf(false) }
+    var ipNeededInStrict by rememberSaveable { mutableStateOf(false) }
 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (preset in DohPresets.ALL) {
@@ -707,7 +748,11 @@ private fun ColumnScope.DohSection(
             selected = uiState.dohProvider == DohPresets.CUSTOM_ID,
             onClick = {
                 // No saved URL yet: say so instead of silently ignoring the tap.
-                if (DohPresets.isValidCustomUrl(uiState.dohCustomUrl)) onProviderChange(DohPresets.CUSTOM_ID) else needsUrl = true
+                if (DohPresets.isValidCustomUrl(uiState.dohCustomUrl, uiState.dohCustomServerIp)) {
+                    onProviderChange(DohPresets.CUSTOM_ID)
+                } else {
+                    needsUrl = true
+                }
             },
             label = { Text(stringResource(R.string.settings_dns_provider_custom)) }
         )
@@ -730,14 +775,23 @@ private fun ColumnScope.DohSection(
     )
     OutlinedTextField(
         value = ipDraft,
-        onValueChange = { ipDraft = it; invalidIp = false },
+        onValueChange = { ipDraft = it; invalidIp = false; publicIpForHttp = false; ipNeededInStrict = false },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         label = { Text(stringResource(R.string.settings_dns_custom_ip_label)) },
         placeholder = { Text("192.168.1.2") },
-        isError = invalidIp,
+        isError = invalidIp || publicIpForHttp || ipNeededInStrict,
         supportingText = {
-            Text(stringResource(if (invalidIp) R.string.settings_dns_custom_ip_invalid else R.string.settings_dns_custom_ip_help))
+            Text(
+                stringResource(
+                    when {
+                        invalidIp -> R.string.settings_dns_custom_ip_invalid
+                        publicIpForHttp -> R.string.settings_dns_custom_ip_public_for_http
+                        ipNeededInStrict -> R.string.settings_dns_strict_needs_server_ip
+                        else -> R.string.settings_dns_custom_ip_help
+                    }
+                )
+            )
         },
     )
     TextButton(
@@ -746,6 +800,8 @@ private fun ColumnScope.DohSection(
             val result = onSaveCustomUrl(draft, ipDraft)
             invalid = result == DohSaveResult.INVALID_URL
             invalidIp = result == DohSaveResult.INVALID_SERVER_IP
+            publicIpForHttp = result == DohSaveResult.PUBLIC_SERVER_IP_FOR_HTTP
+            ipNeededInStrict = result == DohSaveResult.NEEDS_SERVER_IP
             ipNeedsUrl = result == DohSaveResult.MISSING_URL
             if (result == DohSaveResult.SAVED) {
                 needsUrl = false
@@ -755,9 +811,19 @@ private fun ColumnScope.DohSection(
         enabled = draft.trim() != uiState.dohCustomUrl || ipDraft.trim() != uiState.dohCustomServerIp,
         modifier = Modifier.align(Alignment.End)
     ) { Text(stringResource(R.string.settings_dns_custom_save)) }
-    // Only a saved custom URL can skip the check; the presets are always verified. Disabled while
-    // an edit is unsaved: the switch acts on the SAVED server, not the one being typed.
-    if (uiState.dohProvider == DohPresets.CUSTOM_ID) {
+    // An http:// resolver (#334): say plainly, for as long as it is in use, what that gives up.
+    val cleartext = DohPresets.isCleartext(uiState.dohCustomUrl)
+    if (uiState.dohProvider == DohPresets.CUSTOM_ID && cleartext) {
+        Text(
+            stringResource(R.string.settings_dns_cleartext_warning),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+    // Only a saved custom https URL can skip the check; the presets are always verified, and http
+    // has no certificate. Disabled while an edit is unsaved: the switch acts on the SAVED server,
+    // not the one being typed.
+    if (uiState.dohProvider == DohPresets.CUSTOM_ID && !cleartext) {
         LabelledSwitch(
             title = stringResource(R.string.settings_dns_insecure_title),
             description = stringResource(R.string.settings_dns_insecure_description),

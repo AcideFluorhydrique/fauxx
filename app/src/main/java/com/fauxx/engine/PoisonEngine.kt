@@ -511,6 +511,12 @@ class PoisonEngine @Inject constructor(
         fingerprintModule, locationModule, adModule, appSignalModule
     )
 
+    /** The modules that load pages in the phantom WebView pool. */
+    private val browsingModules: List<Module> get() = listOf(searchModule, cookieModule, adModule, appSignalModule)
+
+    /** Whether the last dispatch skipped the browsing modules for strict custom DNS (#333); logged on change only. */
+    private var browsingWasBlocked = false
+
 
     /**
      * Register a handler invoked when [runLoop] decides the engine should resign
@@ -602,8 +608,9 @@ class PoisonEngine @Inject constructor(
         // Startup asset health check — verify critical data loaded successfully.
         _healthWarnings.value = checkAssetHealth()
 
-        // Custom DNS before any module browses (#227). Fail-open: a failure here only means the
-        // system resolver stays in use, never that the engine does not start.
+        // Custom DNS before any module browses (#227). A failure here never stops the engine from
+        // starting: by default the system resolver stays in use, and in strict mode (#333) the
+        // pool's browsing gate keeps modules from browsing until the WebView is routed.
         try {
             customDns.start()
         } catch (ce: CancellationException) {
@@ -901,9 +908,22 @@ class PoisonEngine @Inject constructor(
 
             // Pick an enabled module that isn't circuit-broken
             val now = clock.currentTimeMillis()
+            // Strict custom DNS with the WebView not routed (#333): browsing is off until routing
+            // is back, which the router retries on its own. A quiet state, not a failure per tick:
+            // the browsing modules are left out of dispatch, and the change is logged once.
+            val browsingBlocked = customDns.browsingBlocked()
+            if (browsingBlocked != browsingWasBlocked) {
+                browsingWasBlocked = browsingBlocked
+                if (browsingBlocked) {
+                    Timber.i("Browsing paused: strict custom DNS cannot route the WebView yet")
+                } else {
+                    Timber.i("Browsing resumed: strict custom DNS routes the WebView again")
+                }
+            }
+            val skipped = if (browsingBlocked) browsingModules else emptyList()
             val availableModules = allModules.filter { module ->
                 val name = module::class.simpleName ?: return@filter false
-                module.isEnabled() && (circuitBreakerUntil[name] ?: 0L) <= now
+                module !in skipped && module.isEnabled() && (circuitBreakerUntil[name] ?: 0L) <= now
             }
             if (availableModules.isEmpty()) {
                 // When the first enabled module may retry. A permanent break (Long.MAX_VALUE, a
@@ -1631,6 +1651,7 @@ class PoisonProfileRepository @Inject constructor(
         prefs[com.fauxx.di.PreferenceKeys.PLAIN_DNS_SERVER] = p.plainDnsServer
         prefs[com.fauxx.di.PreferenceKeys.ROUTE_DNS_NOISE] = p.routeDnsNoise
         prefs[com.fauxx.di.PreferenceKeys.PREFERRED_CUSTOM_DNS_MODE] = p.preferredCustomDnsMode.name
+        prefs[com.fauxx.di.PreferenceKeys.DNS_STRICT] = p.dnsStrict
         // #201: the custom UA is retired; clear any value a previous version stored so it
         // does not linger in DataStore.
         prefs.remove(com.fauxx.di.PreferenceKeys.CUSTOM_USER_AGENT)
@@ -1718,6 +1739,7 @@ class PoisonProfileRepository @Inject constructor(
                     prefs[com.fauxx.di.PreferenceKeys.PREFERRED_CUSTOM_DNS_MODE] ?: com.fauxx.data.model.DnsMode.DOH.name
                 )
             }.getOrDefault(com.fauxx.data.model.DnsMode.DOH),
+            dnsStrict = prefs[com.fauxx.di.PreferenceKeys.DNS_STRICT] ?: false,
         )
     }
 

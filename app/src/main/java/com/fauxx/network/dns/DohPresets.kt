@@ -40,14 +40,45 @@ object DohPresets {
     fun byId(id: String): DohPreset? = ALL.firstOrNull { it.id == id }
 
     /**
-     * Whether [url] is usable as a custom DoH endpoint: https only (a resolver reached in the clear
-     * would hand the whole browsing list to the network it is meant to route around), with a host,
-     * and no `user:password@` part (credentials have no place in a DoH URL, and would end up
-     * stored in plain preferences).
+     * Whether [url] is usable as a custom DoH endpoint: https, or http for a resolver on the user's
+     * own network only (#334). Anywhere else, a resolver reached in the clear would hand the whole
+     * browsing list to the network it is meant to route around. It needs a host, and no
+     * `user:password@` part (credentials have no place in a DoH URL, and would end up stored in
+     * plain preferences).
+     *
+     * For http, "on the user's own network" means either a private [serverIp] (then the host may be
+     * any name, `pihole` or `dns.home` included: the connection goes to that address), or, without
+     * one, a host that is private by itself ([AddressScope.isPrivateHost]). Either way the cleartext
+     * client checks the address it actually connects to again.
      */
-    fun isValidCustomUrl(url: String): Boolean {
+    fun isValidCustomUrl(url: String, serverIp: String = ""): Boolean {
         val parsed = url.trim().toHttpUrlOrNull() ?: return false
-        return parsed.isHttps && parsed.host.isNotBlank() && parsed.username.isEmpty() && parsed.password.isEmpty()
+        if (parsed.host.isBlank() || parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return false
+        if (parsed.isHttps) return true
+        val privateServerIp = parseServerIp(serverIp)?.let(AddressScope::isPrivateNetwork) == true
+        return privateServerIp || AddressScope.isPrivateHost(parsed.host)
+    }
+
+    /** Whether [url] asks for DoH without encryption (`http://`, #334). Says nothing about validity. */
+    fun isCleartext(url: String): Boolean = url.trim().toHttpUrlOrNull()?.isHttps == false
+
+    /**
+     * Whether [serverIp] may go with [url]: a valid address ([parseServerIp]), and for an `http://`
+     * URL a private one, since that is where the unencrypted queries would actually be sent.
+     */
+    fun isUsableServerIp(url: String, serverIp: String): Boolean {
+        val address = parseServerIp(serverIp) ?: return false
+        return !isCleartext(url) || AddressScope.isPrivateNetwork(address)
+    }
+
+    /**
+     * Strict mode (#333) with an http URL whose host is a name and no server IP: only the device's
+     * own DNS knows names like `pihole.lan`, and strict mode never asks it, so the address is needed.
+     */
+    fun needsServerIpInStrict(url: String, serverIp: String): Boolean {
+        if (!isCleartext(url) || serverIp.isNotBlank()) return false
+        val host = url.trim().toHttpUrlOrNull()?.host ?: return false
+        return LoopbackProxy.parseIpLiteral(host) == null
     }
 
     /**

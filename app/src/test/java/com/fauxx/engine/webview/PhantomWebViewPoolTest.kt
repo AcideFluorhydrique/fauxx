@@ -98,6 +98,55 @@ class PhantomWebViewPoolTest {
     }
 
     @Test
+    fun `a closed browsing gate refuses to hand out a WebView (#333)`() {
+        var reason: String? = "strict DNS, not routed"
+        pool = PhantomWebViewPool(
+            RuntimeEnvironment.getApplication(),
+            mockk<DomainBlocklist>(relaxed = true),
+            PersonaJarStore(),
+            identity,
+            browsingGate = PhantomBrowsingGate { reason },
+        )
+        drive { pool.initialize() }
+
+        // drive() rethrows a failure wrapped in an AssertionError.
+        val refused = runCatching { drive { pool.acquire() } }.exceptionOrNull()
+        assertTrue("got $refused", refused?.cause is BrowsingBlockedException)
+
+        // Routing restored: browsing resumes on the next acquire, nothing to rebuild.
+        reason = null
+        val wv = drive { pool.acquire() }
+        drive { pool.release(wv) }
+    }
+
+    @Test
+    fun `the gate is checked again once the permit is held, and the permit is given back`() {
+        // Routing can be lost during the jar swap or the permit wait (up to 30 s), after the first check.
+        val checks = java.util.concurrent.atomic.AtomicInteger(0)
+        val closeAfterFirst = java.util.concurrent.atomic.AtomicBoolean(true)
+        pool = PhantomWebViewPool(
+            RuntimeEnvironment.getApplication(),
+            mockk<DomainBlocklist>(relaxed = true),
+            PersonaJarStore(),
+            identity,
+            browsingGate = PhantomBrowsingGate {
+                if (closeAfterFirst.get() && checks.incrementAndGet() > 1) "routing lost meanwhile" else null
+            },
+        )
+        drive { pool.initialize() }
+
+        val refused = runCatching { drive { pool.acquire() } }.exceptionOrNull()
+        assertTrue("got $refused", refused?.cause is BrowsingBlockedException)
+
+        // Both permits must still be there: a leaked one would make the second acquire time out.
+        closeAfterFirst.set(false)
+        val a = drive { pool.acquire() }
+        val b = drive { pool.acquire() }
+        drive { pool.release(a) }
+        drive { pool.release(b) }
+    }
+
+    @Test
     fun `acquire applies the image setting, and a change takes effect on the next acquire`() {
         var loadImages = false
         pool = PhantomWebViewPool(

@@ -116,6 +116,8 @@ object PreferenceKeys {
     val PLAIN_DNS_SERVER = stringPreferencesKey("plain_dns_server")
     val ROUTE_DNS_NOISE = booleanPreferencesKey("route_dns_noise")
     val PREFERRED_CUSTOM_DNS_MODE = stringPreferencesKey("preferred_custom_dns_mode")
+    // Strict custom DNS (#333): never fall back to the system resolver.
+    val DNS_STRICT = booleanPreferencesKey("dns_strict")
 
     // Issue #7: when set, the engine uses this UA for ALL synthetic traffic
     // instead of randomizing across the user_agents.json pool. Lets users match

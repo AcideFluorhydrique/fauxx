@@ -5,6 +5,7 @@ import com.fauxx.engine.dns.CustomDns
 import com.fauxx.engine.dns.CustomDnsRouter
 import com.fauxx.engine.dns.DnsInterceptionProbe
 import com.fauxx.engine.dns.NetworkChanges
+import com.fauxx.engine.webview.PhantomBrowsingGate
 import com.fauxx.engine.webview.PhantomBrowsingPrefs
 import com.fauxx.engine.webview.PhantomProxyAuth
 import com.fauxx.engine.webview.WebViewCapabilities
@@ -73,4 +74,8 @@ object WebViewModule {
 
     @Provides
     fun providePhantomProxyAuth(router: CustomDnsRouter): PhantomProxyAuth = router
+
+    /** Strict custom DNS (#333) keeps the pool from browsing when the WebView is not routed. */
+    @Provides
+    fun providePhantomBrowsingGate(router: CustomDnsRouter): PhantomBrowsingGate = router
 }

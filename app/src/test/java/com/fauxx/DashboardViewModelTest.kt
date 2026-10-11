@@ -189,6 +189,22 @@ class DashboardViewModelTest {
             com.fauxx.ui.viewmodels.CustomDnsNotice.CERTIFICATE_CHANGED,
             withTimeout(5_000) { vm.customDnsNotice.first { it == com.fauxx.ui.viewmodels.CustomDnsNotice.CERTIFICATE_CHANGED } },
         )
+        // Strict mode (#333): lookups fail rather than fall back, so "using your device's DNS" would
+        // be false. Blocked outranks everything, and says why.
+        val cases = listOf(
+            com.fauxx.network.dns.DnsHealth.Degraded(0L, "down", blocked = true) to
+                com.fauxx.ui.viewmodels.CustomDnsNotice.BLOCKED_RESOLVER,
+            com.fauxx.network.dns.DnsHealth.Degraded(0L, "routing", blocked = true, cause = com.fauxx.network.dns.DegradeCause.ROUTING) to
+                com.fauxx.ui.viewmodels.CustomDnsNotice.BLOCKED_ROUTING,
+            com.fauxx.network.dns.DnsHealth.Degraded(0L, "settings", blocked = true, cause = com.fauxx.network.dns.DegradeCause.SETTINGS) to
+                com.fauxx.ui.viewmodels.CustomDnsNotice.BLOCKED_SETTINGS,
+            com.fauxx.network.dns.DnsHealth.Degraded(1L, "cert", certificateChanged = true, blocked = true) to
+                com.fauxx.ui.viewmodels.CustomDnsNotice.BLOCKED_RESOLVER,
+        )
+        for ((h, expected) in cases) {
+            health.value = h
+            assertEquals(expected, withTimeout(5_000) { vm.customDnsNotice.first { it == expected } })
+        }
         job.cancel()
     }
 }
