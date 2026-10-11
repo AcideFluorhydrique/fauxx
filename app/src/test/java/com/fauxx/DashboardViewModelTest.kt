@@ -111,6 +111,7 @@ class DashboardViewModelTest {
     private fun newViewModel(
         canHidePackageName: Boolean,
         customDns: com.fauxx.engine.dns.CustomDns = com.fauxx.engine.dns.CustomDns.NONE,
+        playInstalled: () -> Boolean = { false },
     ) = DashboardViewModel(
         context, actionLogDao, profileRepo, poisonEngine, targetingEngine, personaLayer, dataStore,
         mockk<com.fauxx.targeting.layer2.ProfileSnapshotDao>(relaxed = true) {
@@ -120,6 +121,7 @@ class DashboardViewModelTest {
         object : WebViewCapabilities {
             override fun canHidePackageName(): Boolean = canHidePackageName
             override fun canUseProxy(): Boolean = true
+            override fun isPlayStoreInstalled(context: Context): Boolean = playInstalled()
         },
         customDns,
     )
@@ -129,7 +131,27 @@ class DashboardViewModelTest {
         every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
         val vm = newViewModel(canHidePackageName = false)
         // The check runs on Dispatchers.Default, a real thread, so wait for it rather than assume.
-        assertTrue(withTimeout(5_000) { vm.webViewNamesApp.first { it } })
+        val warning = withTimeout(5_000) { vm.webViewWarning.first { it != null } }!!
+        // The card names what is missing rather than calling the WebView "too old" (#336).
+        assertEquals(WebViewCapabilities.PACKAGE_NAME_HIDING_FEATURES, warning.found.missingForPackageNameHiding)
+    }
+
+    @Test
+    fun `the warning's button follows the Play Store state on refresh`() = runBlocking {
+        every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
+        // The WebView answer is fixed for the process; only whether Play is installed can change.
+        val play = java.util.concurrent.atomic.AtomicBoolean(false)
+        val vm = newViewModel(canHidePackageName = false, playInstalled = { play.get() })
+        val before = withTimeout(5_000) { vm.webViewWarning.first { it != null } }!!
+        // The fake reports no provider, so without Play there is nowhere to send the user.
+        assertEquals(com.fauxx.engine.webview.WebViewUpdateRoute.None, before.advice.route)
+        // The user enables Play and comes back to the dashboard.
+        play.set(true)
+        vm.refreshStoreState()
+        val after = withTimeout(5_000) {
+            vm.webViewWarning.first { it?.advice?.route is com.fauxx.engine.webview.WebViewUpdateRoute.PlayStore }
+        }!!
+        assertEquals(before.found, after.found)
     }
 
     @Test
@@ -137,7 +159,7 @@ class DashboardViewModelTest {
         every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
         val vm = newViewModel(canHidePackageName = true)
         delay(200)
-        assertFalse(vm.webViewNamesApp.value)
+        assertEquals(null, vm.webViewWarning.value)
     }
 
     @Test
