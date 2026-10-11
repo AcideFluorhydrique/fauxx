@@ -42,7 +42,6 @@ body:
       label: Build flavor
       options:
         - Full
-        - Play
         - Not sure
     validations:
       required: true

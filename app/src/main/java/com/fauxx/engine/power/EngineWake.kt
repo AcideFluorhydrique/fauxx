@@ -171,8 +171,8 @@ class AlarmEngineWakeup @Inject constructor(
         wakeups.tryReceive()
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         // canScheduleExactAlarms() is API 31+; before Android 12 exact alarms need no permission.
-        // The full flavor declares USE_EXACT_ALARM; the play flavor does not and gets the inexact
-        // variant, which Android may batch but still delivers through Doze.
+        // The manifest declares USE_EXACT_ALARM; if exact alarms are still unavailable, the inexact
+        // variant is used, which Android may batch but still delivers through Doze.
         val canScheduleExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             alarmManager.canScheduleExactAlarms()
         try {

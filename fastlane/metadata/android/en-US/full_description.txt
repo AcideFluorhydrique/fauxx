@@ -1,7 +1,5 @@
 Fauxx is an open-source privacy tool that protects you by generating diverse, believable synthetic browsing activity in the background. By feeding data brokers and ad-tech platforms plausible off-demographic decoy activity that reads as real people, Fauxx makes your genuine behavioral signal indistinguishable from convincing fakes — deception, not easily-filterable noise.
 
-This is the FULL version distributed via F-Droid and GitHub. It includes ad profile pollution, which is not available in the Play Store version due to Google's policies.
-
 HOW IT WORKS
 
 Fauxx runs quietly in the background and performs diverse browsing activities across many topic categories — searches, page visits, DNS lookups, a stable per-persona device identity, and ad profile pollution. The goal is to bury your real interests under a stream of coherent, believable decoy activity so that data brokers can't tell which "you" is real.

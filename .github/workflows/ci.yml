@@ -17,16 +17,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # full is the shipped flavor (F-Droid / GitHub releases) and carries every
-          # quality gate: coverage ratchet, lint, and (in release.yml) the instrumented
-          # suite. play is deprecated and unshipped — its leg is kept as a cheap
-          # debug-compile-and-unit-test signal only, so source-level rot is caught while
-          # the flavor stays revivable (see the "Where to get it" note in README.md;
-          # playRelease/R8 and play lint are deliberately NOT exercised anywhere).
+          # full is the only build flavor (F-Droid / GitHub releases). The single-entry
+          # matrix keeps the check name "Build & Test (full)" stable.
           - flavor: full
             flavorName: Full
-          - flavor: play
-            flavorName: Play
 
     steps:
       - name: Checkout
@@ -49,11 +43,9 @@ jobs:
         run: ./gradlew test${{ matrix.flavorName }}DebugUnitTest
 
       - name: Coverage gate (ratcheting)
-        if: matrix.flavor == 'full'
         run: ./gradlew koverVerifyFullDebug
 
       - name: Android Lint
-        if: matrix.flavor == 'full'
         run: ./gradlew lint${{ matrix.flavorName }}Debug
 
       - name: Build debug APK
@@ -67,7 +59,7 @@ jobs:
           path: app/build/reports/tests/
 
       - name: Upload lint results
-        if: always() && matrix.flavor == 'full'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: lint-results-${{ matrix.flavor }}

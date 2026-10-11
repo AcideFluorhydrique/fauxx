@@ -1,7 +1,5 @@
 Fauxx est un outil de confidentialité open source qui vous protège en générant en arrière-plan une activité de navigation synthétique et variée. En alimentant les courtiers en données et les plateformes publicitaires en activité leurre plausible, étrangère à votre profil et qui ressemble à de vraies personnes, Fauxx rend votre signal comportemental réel indissociable de fausses données convaincantes : de la tromperie, pas du bruit facile à filtrer.
 
-Ceci est la version COMPLÈTE distribuée via F-Droid et GitHub. Elle inclut la pollution du profil publicitaire, qui n'est pas disponible dans la version Play Store en raison des règles de Google.
-
 COMMENT ÇA MARCHE
 
 Fauxx s'exécute discrètement en arrière-plan et effectue des activités de navigation variées dans de nombreuses catégories de sujets : recherches, visites de pages, requêtes DNS, une identité d'appareil stable par persona et pollution du profil publicitaire. L'objectif est d'enfouir vos centres d'intérêt réels sous un flux d'activité leurre cohérente et crédible afin que les courtiers en données ne puissent pas savoir quel « vous » est réel.

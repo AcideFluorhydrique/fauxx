@@ -86,9 +86,6 @@ object PreferenceKeys {
     // User consent for background activity
     val CONSENT_ACCEPTED = booleanPreferencesKey("consent_accepted")
 
-    // Play Store flavor: user dismissed the "get full version" notice
-    val FULL_VERSION_NOTICE_DISMISSED = booleanPreferencesKey("full_version_notice_dismissed")
-
     // Samsung devices: user dismissed the sleeping-apps steps on the dashboard (#335)
     val SAMSUNG_SLEEP_GUIDANCE_DISMISSED = booleanPreferencesKey("samsung_sleep_guidance_dismissed")
 

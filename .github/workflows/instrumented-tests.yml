@@ -60,8 +60,7 @@ jobs:
           cores: 4
           emulator-boot-timeout: 900
           disable-animations: true
-          # androidTest is a single flavor-shared source set; it runs against the full
-          # debug variant — the shipped flavor — now that play is deprecated.
+          # androidTest runs against the full debug variant, the only build flavor.
           script: ./gradlew connectedFullDebugAndroidTest
 
       - name: Upload instrumented test results

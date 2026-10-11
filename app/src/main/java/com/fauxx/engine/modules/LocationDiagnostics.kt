@@ -1,18 +1,14 @@
 package com.fauxx.engine.modules
 
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Surface of the most-recent location-spoof startup outcome, observable by the UI so
  * the ModulesScreen can show the user *why* the toggle is silently doing nothing.
  *
- * Implemented by `LocationSpoofModule` in the full flavor (where addTestProvider can
- * fail in user-recoverable ways) and by [NoOpLocationDiagnostics] in the play flavor
- * (where `LocationSignalModule` is HTTP-only and has no equivalent failure mode).
+ * Implemented by `LocationSpoofModule`, where addTestProvider can fail in
+ * user-recoverable ways. Kept as an interface so the UI layer depends on this narrow
+ * surface rather than on the module itself.
  */
 interface LocationDiagnostics {
     val lastStartFailure: StateFlow<StartFailure>
@@ -22,8 +18,6 @@ interface LocationDiagnostics {
      * (Developer Options → "Select mock location app"). Used by the UI to decide
      * whether to surface the setup-hint dialog when the user toggles the module on
      * — there's no point telling them to do the setup if it's already done.
-     *
-     * Always `false` on the play flavor, where there is no mock-provider integration.
      */
     fun isMockLocationAppOpAllowed(): Boolean
 
@@ -32,8 +26,6 @@ interface LocationDiagnostics {
      * startup loop. Lets the user get instant green-banner / red-banner feedback
      * the moment they toggle the module on, instead of having to wait for the next
      * engine restart for `lastStartFailure` to update.
-     *
-     * No-op on the play flavor.
      */
     suspend fun requestStart()
 
@@ -65,13 +57,4 @@ interface LocationDiagnostics {
          */
         RUNTIME_EXCEPTION
     }
-}
-
-/** Play-flavor stub: always reports OK because LocationSignalModule cannot fail in this way. */
-@Singleton
-class NoOpLocationDiagnostics @Inject constructor() : LocationDiagnostics {
-    private val _state = MutableStateFlow(LocationDiagnostics.StartFailure.OK)
-    override val lastStartFailure: StateFlow<LocationDiagnostics.StartFailure> = _state.asStateFlow()
-    override fun isMockLocationAppOpAllowed(): Boolean = false
-    override suspend fun requestStart() { /* no-op — play flavor has no mock-provider lifecycle */ }
 }

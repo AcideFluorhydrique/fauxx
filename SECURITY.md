@@ -22,7 +22,7 @@ Use one of these private channels:
 
 Helpful things to include:
 
-- The affected version and build flavor (Play or full/F-Droid).
+- The affected version and where you installed it from (F-Droid, GitHub Releases, or a sideload).
 - The component or screen involved, and a file or line reference if you have one.
 - What an attacker or a bystander app could observe or do, and what access or user action it requires.
 - Steps to reproduce, or a short proof of concept.

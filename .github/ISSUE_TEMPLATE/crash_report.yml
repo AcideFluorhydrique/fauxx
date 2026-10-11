@@ -43,10 +43,9 @@ body:
     id: flavor
     attributes:
       label: Build flavor
-      description: Where did you install Fauxx from? (F-Droid / sideload = "Full", Play Store = "Play")
+      description: Builds from F-Droid, GitHub releases, or a sideload are all "Full".
       options:
         - Full
-        - Play
         - Not sure
     validations:
       required: true

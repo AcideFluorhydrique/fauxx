@@ -107,8 +107,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Full only: the deprecated, unshipped play flavor must not be able to block a
-          # release. Its compile-and-unit-test signal lives in ci.yml on every push/PR.
           - flavorName: Full
     steps:
       - name: Checkout
@@ -164,16 +162,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The Google Play build is no longer published. The `play` build flavor stays in the
-          # source (still debug-compiled + unit-tested in ci.yml) so it can be revived, but it
-          # is no longer built, signed, released, or allowed to gate anything. To revive it:
-          #   - re-add here: `- flavor: play / flavorName: Play / gradleTask: bundlePlayRelease /
-          #     artifactSrcDir: app/build/outputs/bundle/playRelease /
-          #     artifactSrcName: app-play-release.aab / artifactExt: aab`
-          #   - re-add `- flavorName: Play` to the unit-tests matrix above
-          #   - widen the publish job's `files:` glob below (it only attaches fauxx-full-*.apk;
-          #     an unmatched AAB would be dropped silently)
-          #   - restore the play quality gates in ci.yml (lint/coverage) if it ships again
           - flavor: full
             flavorName: Full
             gradleTask: assembleFullRelease

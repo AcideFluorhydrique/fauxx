@@ -49,7 +49,6 @@ object CrashReportUrlBuilder {
      * applying a flavor label rather than guessing wrong.
      */
     fun mapFlavor(buildConfigFlavor: String): String = when (buildConfigFlavor.lowercase()) {
-        "play" -> "Play"
         "full" -> "Full"
         else -> "Not sure"
     }

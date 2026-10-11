@@ -69,19 +69,19 @@ class CrashReportUrlBuilderTest {
     @Test
     fun `mapFlavor maps known build flavors to form dropdown values`() {
         assertEquals("Full", CrashReportUrlBuilder.mapFlavor("full"))
-        assertEquals("Play", CrashReportUrlBuilder.mapFlavor("play"))
     }
 
     @Test
     fun `mapFlavor case-insensitive`() {
         assertEquals("Full", CrashReportUrlBuilder.mapFlavor("FULL"))
-        assertEquals("Play", CrashReportUrlBuilder.mapFlavor("Play"))
     }
 
     @Test
     fun `mapFlavor unknown falls back to Not sure`() {
         assertEquals("Not sure", CrashReportUrlBuilder.mapFlavor(""))
         assertEquals("Not sure", CrashReportUrlBuilder.mapFlavor("dev"))
+        // The play flavor was removed; its old value is no longer a dropdown option.
+        assertEquals("Not sure", CrashReportUrlBuilder.mapFlavor("play"))
     }
 
     // --- build: embedding ---

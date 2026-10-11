@@ -11,13 +11,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Guards the foreground-service type in the *merged* manifest of whichever flavor is under test.
+ * Guards the foreground-service type in the *merged* manifest of the full flavor.
  * [android.app.Service.startForeground] throws when the runtime type doesn't match what the
- * manifest declares, so a flavor that loses or changes `foregroundServiceType` would crash the
- * engine at start — exactly the kind of per-flavor manifest drift a source grep can miss. Both
- * flavors declare `specialUse`, but CI only exercises this against the shipped full flavor
- * (`connectedFullDebugAndroidTest`); the deprecated play flavor's manifest is merged by its
- * compile leg yet no longer asserted here.
+ * manifest declares, so losing or changing `foregroundServiceType` in the flavor overlay would
+ * crash the engine at start, exactly the kind of manifest drift a source grep can miss. CI runs
+ * this via `connectedFullDebugAndroidTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class ManifestFgsTypeTest {
