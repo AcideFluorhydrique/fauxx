@@ -278,6 +278,7 @@ class PhantomForegroundService : Service() {
             EngineState.ACTIVE -> "Generating diverse browsing activity — $count actions today"
             EngineState.PAUSED_WIFI -> "Paused — waiting for a usable network"
             EngineState.PAUSED_METERED_WIFI -> "Paused — this Wi-Fi is metered"
+            EngineState.PAUSED_NETWORK_BLOCKED -> "Paused: Android is restricting Fauxx's background network"
             EngineState.PAUSED_BATTERY -> "Paused — battery low"
             EngineState.PAUSED_BATTERY_SAVER -> "Paused — Battery Saver is on"
             EngineState.PAUSED_RATE_LIMIT -> "Paused — hourly limit reached"

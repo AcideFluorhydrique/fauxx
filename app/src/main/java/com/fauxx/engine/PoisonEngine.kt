@@ -36,6 +36,8 @@ import com.fauxx.engine.modules.DnsNoiseModule
 import com.fauxx.engine.modules.FingerprintModule
 import com.fauxx.engine.modules.Module
 import com.fauxx.engine.modules.SearchPoisonModule
+import com.fauxx.engine.power.EngineWakeLock
+import com.fauxx.engine.power.EngineWakeup
 import com.fauxx.engine.scheduling.ActionDispatcher
 import com.fauxx.engine.scheduling.AllowedHours
 import com.fauxx.engine.scheduling.PoissonScheduler
@@ -55,7 +57,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
@@ -79,6 +84,12 @@ enum class EngineState {
      *  intensity is Off. Distinct from [PAUSED_WIFI] so the UI can say "this Wi-Fi is
      *  metered" instead of the misleading "waiting for a usable network" (issue #288). */
     PAUSED_METERED_WIFI,
+    /** Running but paused because Android is blocking this app's network while the network
+     *  itself is up (#335): Doze, app standby, an OEM sleep mode, Data Saver or background data
+     *  turned off for Fauxx. Distinct from [PAUSED_WIFI] so the UI points at the restriction
+     *  instead of "waiting for a usable network". Never resigns: there is no WorkManager
+     *  constraint for "the block lifted", and the loop resumes on the network callback. */
+    PAUSED_NETWORK_BLOCKED,
     PAUSED_BATTERY,
     /** Running but paused because Android's Battery Saver is on and the user asked Fauxx to
      *  stand down while it is (issue #313). Never resigns: the loop waits for Battery Saver to
@@ -126,6 +137,28 @@ private const val MODULE_STOP_TIMEOUT_MS = 2_000L
  * instead of hours of silent stall.
  */
 private const val SLEEP_CONSTRAINT_RECHECK_MS = 60_000L
+
+/**
+ * Longest the engine holds the CPU awake for one action (#335). Actions finish well inside this;
+ * it only bounds a module that hangs, so a stuck page load cannot keep the phone awake all night.
+ * The engine releases the lock itself the moment the action and its bookkeeping are done.
+ */
+private const val ACTION_WAKE_LOCK_TIMEOUT_MS = 3L * 60 * 1000
+
+/**
+ * How many wakeups may end one wait before its deadline before the wait stops trusting them and
+ * falls back to plain delays (#335). An early wakeup is rare (the alarm signal carries its own
+ * sequence number, so a stale broadcast never counts); the bound only keeps a misbehaving wake
+ * source from spinning the loop.
+ */
+private const val MAX_EARLY_WAKES = 3
+
+/**
+ * Elapsed realtime between two passes of a network pause beyond the wait in between that means
+ * the CPU was suspended (#335). No pass runs while suspended, so a gap this much longer than the
+ * wait is sleep, and it does not count toward the resign clock.
+ */
+private const val SUSPEND_GAP_SLACK_MS = 10_000L
 
 /**
  * Threshold for a "long pause" — wifi/battery pauses past this duration trigger the
@@ -215,6 +248,16 @@ class PoisonEngine @Inject constructor(
      * a no-op so engine tests need not stand one up.
      */
     private val customDns: CustomDns = CustomDns.NONE,
+    /**
+     * Holds the CPU awake while an action runs (#335). Defaults to a no-op so engine tests need
+     * not stand one up.
+     */
+    private val wakeLock: EngineWakeLock = EngineWakeLock.NONE,
+    /**
+     * Wakes the CPU when the next action is due, so the engine keeps its pace with the screen
+     * off (#335). Defaults to a plain delay so engine tests keep running on virtual time.
+     */
+    private val wakeup: EngineWakeup = EngineWakeup.NONE,
 ) {
     /**
      * Backstop for an uncaught exception in a direct child of [scope] (issue #197). A
@@ -270,6 +313,22 @@ class PoisonEngine @Inject constructor(
     /** Set true once [runLoop] has invoked [onLongPause] for the current run, to avoid double-firing. */
     private var hasResigned: Boolean = false
 
+    /**
+     * The run that owns the wake lock and the wakeup alarm (#335). Both are shared, so a loop
+     * from a stopped run that is still unwinding must not release the lock or cancel the alarm a
+     * newer run holds. [start] and [stop] move it on; every wake operation in the loop checks it.
+     */
+    @Volatile private var session: Long = 0L
+
+    /** Elapsed realtime of the previous pass through a network pause (#335); 0 when none. */
+    private var pauseLastPassAtElapsedMs: Long = 0L
+
+    /** How long the loop waited after that pass, to tell an awake wait from a suspended CPU. */
+    private var pauseLastWaitMs: Long = 0L
+
+    /** Whether that pass found the device asleep. */
+    private var pauseLastPassAsleep: Boolean = false
+
     /** Tracks consecutive failure count per module class name. */
     private val failureCounts = ConcurrentHashMap<String, Int>()
 
@@ -292,6 +351,17 @@ class PoisonEngine @Inject constructor(
     private val cachedTransport = java.util.concurrent.atomic.AtomicReference(NetworkTransport.NONE)
 
     /**
+     * Whether Android is blocking this app's access to the default network (#335): Doze, app
+     * standby or an OEM sleep mode can cut an app off while the network itself stays up, which
+     * the transport alone does not show. Actions would only fail, so the engine treats it like
+     * no network.
+     */
+    private val cachedNetworkBlocked = AtomicBoolean(false)
+
+    /** Bumped on every network change so a network-paused loop can wake at once (#335). */
+    private val networkChanges = MutableStateFlow(0L)
+
+    /**
      * Seed the cached constraint state directly. Mirrors what the battery/connectivity
      * BroadcastReceivers do, for tests that drive constraint transitions without a live
      * broadcast (e.g. a no-network↔battery flicker exercising the cumulative resign clock).
@@ -302,8 +372,10 @@ class PoisonEngine @Inject constructor(
         batteryLevel: Int? = null,
         charging: Boolean? = null,
         powerSave: Boolean? = null,
+        networkBlocked: Boolean? = null,
     ) {
-        transport?.let { cachedTransport.set(it) }
+        transport?.let { cachedTransport.set(it); networkChanges.value++ }
+        networkBlocked?.let { cachedNetworkBlocked.set(it); networkChanges.value++ }
         batteryLevel?.let { cachedBatteryLevel.set(it) }
         charging?.let { cachedIsCharging.set(it) }
         powerSave?.let { cachedPowerSave.value = it }
@@ -355,10 +427,19 @@ class PoisonEngine @Inject constructor(
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
             cachedTransport.set(classifyTransport(caps, lookupUnderlyingCaps()))
+            networkChanges.value++
+        }
+
+        // API 29+. On older releases it is never called and the flag stays false.
+        override fun onBlockedStatusChanged(network: Network, blocked: Boolean) {
+            cachedNetworkBlocked.set(blocked)
+            networkChanges.value++
         }
 
         override fun onLost(network: Network) {
             cachedTransport.set(NetworkTransport.NONE)
+            cachedNetworkBlocked.set(false)
+            networkChanges.value++
         }
     }
 
@@ -463,10 +544,13 @@ class PoisonEngine @Inject constructor(
         lastPauseState = EngineState.ACTIVE
         hasResigned = false
         hasSignaledActive = false
+        pauseLastPassAtElapsedMs = 0L
+        pauseLastPassAsleep = false
+        val runSession = ++session
         registerConstraintReceivers()
         engineJob = scope.launch {
             try {
-                runEngineSession()
+                runEngineSession(runSession)
             } catch (ce: CancellationException) {
                 throw ce // normal stop()/destroy() cancellation — must propagate
             } catch (t: Throwable) {
@@ -486,7 +570,7 @@ class PoisonEngine @Inject constructor(
      * run loop. Extracted from [start] so the launch can wrap it in the #197 crash guard. Runs on
      * the engine [scope] / [loopDispatcher].
      */
-    private suspend fun runEngineSession() {
+    private suspend fun runEngineSession(runSession: Long) {
         teardownJob?.join()
         // Sync targeting layer enable flags from persisted profile
         val savedProfile = profile.getProfile()
@@ -537,7 +621,7 @@ class PoisonEngine @Inject constructor(
                 circuitBreakerUntil[name] = clock.currentTimeMillis() + MAX_BACKOFF_MS
             }
         }
-        runLoop()
+        runLoop(runSession)
     }
 
     /**
@@ -549,6 +633,8 @@ class PoisonEngine @Inject constructor(
     fun stop() {
         engineJob?.cancel()
         engineJob = null
+        session++ // the cancelled loop no longer owns the lock or the alarm
+        releaseWake()
         _engineState.value = EngineState.STOPPED
         onLongPause = null
         onActive = null
@@ -575,6 +661,8 @@ class PoisonEngine @Inject constructor(
     fun destroy() {
         engineJob?.cancel()
         engineJob = null
+        session++
+        releaseWake()
         _engineState.value = EngineState.STOPPED
         onLongPause = null
         onActive = null
@@ -609,6 +697,7 @@ class PoisonEngine @Inject constructor(
         }
         // Seed network transport state
         cachedTransport.set(checkTransportNow())
+        cachedNetworkBlocked.set(false)
 
         // Register ongoing receivers. Battery still uses a broadcast; connectivity uses
         // NetworkCallback (CONNECTIVITY_ACTION was deprecated in API 28).
@@ -649,13 +738,16 @@ class PoisonEngine @Inject constructor(
         runCatching { usageObserver.stop() }
     }
 
-    private suspend fun runLoop() {
+    private suspend fun runLoop(s: Long) {
         // Tracks the last successfully-executed category so the scheduler can apply
         // human-like dwell time on cross-niche transitions. In-memory only — a fresh
         // engine run starts a fresh "browsing session," which is realistic.
         var lastCategory: CategoryPool? = null
         while (scope.isActive) {
             val currentProfile = profile.getProfile()
+            // Read before the constraint check, so a network change landing while this pass
+            // checks and logs still ends the network-pause wait below (#335).
+            val networkSeen = networkChanges.value
 
             // Per-network intensity (issue #62): the rate everything below keys off depends
             // on the current transport — Wi-Fi runs `intensity`, mobile runs `mobileIntensity`.
@@ -669,6 +761,10 @@ class PoisonEngine @Inject constructor(
 
             // Constraint checks
             val constraintState = checkConstraints(currentProfile)
+            // What kind of pause this is, judged once from the same network state the check
+            // saw: the transport can change while the pass logs and reads power state (#335).
+            val networkSettingsPause = constraintState != null && isNetworkSettingsPause(constraintState)
+            val networkPause = constraintState != null && isNetworkPause(constraintState)
             if (constraintState != null) {
                 if (lastPauseState != constraintState) {
                     // Start the cumulative pause clock only on the ACTIVE→pause edge. Keeping
@@ -678,8 +774,12 @@ class PoisonEngine @Inject constructor(
                     // and the engine never resigns (#158).
                     // A Battery Saver pause counts as running for this clock: it never resigns, and
                     // if its hours counted, the first brief network or battery blip after it would
-                    // resign at once instead of after 30 minutes (#313).
-                    if (lastPauseState == EngineState.ACTIVE || lastPauseState == EngineState.PAUSED_BATTERY_SAVER) {
+                    // resign at once instead of after 30 minutes (#313). A blocked-network pause
+                    // never resigns either, so the same goes for it (#335).
+                    if (lastPauseState == EngineState.ACTIVE ||
+                        lastPauseState == EngineState.PAUSED_BATTERY_SAVER ||
+                        lastPauseState == EngineState.PAUSED_NETWORK_BLOCKED
+                    ) {
                         pauseEnteredAtElapsedMs = clock.elapsedRealtime()
                     }
                     lastPauseState = constraintState
@@ -687,11 +787,38 @@ class PoisonEngine @Inject constructor(
                     logPauseReason(constraintState, currentProfile)
                 }
                 _engineState.value = constraintState
+                // Nothing to do while paused; let the CPU sleep (#335).
+                releaseLock(s)
+
+                // A network pause that comes from the device sleeping is not a reason to give up
+                // the service (#335). Doze, app standby and OEM sleep modes cut background network
+                // access, or drop Wi-Fi so the default network becomes mobile data or a metered
+                // hotspot, while the screen is off, and restore it in maintenance windows or when
+                // the user returns. Resigning there hands recovery to a tap-to-resume notification,
+                // which is how the engine stayed dead until the user picked the phone up. So for
+                // every network pause the 30-minute resign clock counts only time paused while
+                // awake: it restarts on a pass that finds the device asleep, on the first awake
+                // pass after one, and after any gap between passes far longer than the wait
+                // between them, since no pass runs while the CPU is suspended.
+                val idleInducedNetworkPause = networkSettingsPause && isDeviceAsleep()
+                val passAt = clock.elapsedRealtime()
+                if (networkSettingsPause) {
+                    val suspendedSinceLastPass = pauseLastPassAtElapsedMs != 0L &&
+                        passAt - pauseLastPassAtElapsedMs > pauseLastWaitMs + SUSPEND_GAP_SLACK_MS
+                    if (idleInducedNetworkPause || pauseLastPassAsleep || suspendedSinceLastPass) {
+                        pauseEnteredAtElapsedMs = passAt
+                    }
+                }
+                pauseLastPassAtElapsedMs = passAt
+                pauseLastPassAsleep = idleInducedNetworkPause
 
                 if (!hasResigned) {
                     val pauseElapsedMs = clock.elapsedRealtime() - pauseEnteredAtElapsedMs
                     val totalRuntimeMs = clock.elapsedRealtime() - engineStartElapsedMs
-                    val decision = decidePauseAction(constraintState, currentProfile, pauseElapsedMs, totalRuntimeMs)
+                    val decision = decidePauseAction(
+                        constraintState, currentProfile, pauseElapsedMs, totalRuntimeMs,
+                        idleInducedNetworkPause = idleInducedNetworkPause,
+                    )
                     if (decision is PauseDecision.Resign) {
                         resignAndRecord(constraintState, decision.resumeSpec)
                         return
@@ -699,12 +826,20 @@ class PoisonEngine @Inject constructor(
                 }
 
                 if (constraintState == EngineState.PAUSED_BATTERY_SAVER) {
+                    pauseLastWaitMs = BATTERY_SAVER_RECHECK_MS
                     // Wake the moment Battery Saver turns off rather than on the next tick (#313).
                     withTimeoutOrNull(BATTERY_SAVER_RECHECK_MS) { cachedPowerSave.first { !it } }
                         // No change seen: re-read it anyway, in case a broadcast was missed (the
                         // system does not resend it) or an OEM build never sends one.
                         ?: run { cachedPowerSave.value = isPowerSaveModeNow() }
+                } else if (networkPause) {
+                    pauseLastWaitMs = constraintRetryMs
+                    // Wake the moment the network changes rather than on the next tick (#335). A
+                    // dozing device delivers the change when it opens a maintenance window; a
+                    // timer alone could sleep straight through that window.
+                    withTimeoutOrNull(constraintRetryMs) { networkChanges.first { it != networkSeen } }
                 } else {
+                    pauseLastWaitMs = constraintRetryMs
                     delay(constraintRetryMs)
                 }
                 continue
@@ -713,6 +848,8 @@ class PoisonEngine @Inject constructor(
             // Reset pause tracking on a successful constraint check
             lastPauseState = EngineState.ACTIVE
             pauseEnteredAtElapsedMs = 0L
+            pauseLastPassAtElapsedMs = 0L
+            pauseLastPassAsleep = false
 
             // checkConstraints re-evaluated the transport freshly and passed; this is the
             // loop-top SNAPSHOT, which a mid-iteration transport flip can have left null.
@@ -743,7 +880,17 @@ class PoisonEngine @Inject constructor(
             if (recentActionTimestamps.size >= activeIntensity.actionsPerHour) {
                 _engineState.value = EngineState.PAUSED_RATE_LIMIT
                 Timber.d("Rate limit reached: ${recentActionTimestamps.size}/${activeIntensity.actionsPerHour} actions/hour")
-                delay(RATE_LIMIT_PAUSE_MS)
+                // Sleep until the oldest action leaves the window, through the alarm-backed sleep:
+                // one wakeup instead of a re-check every 15 s, which with the screen off would
+                // wake the phone up to 240 times an hour while the window drains (#335). A change
+                // of rate (a new intensity, or a move between Wi-Fi and mobile) ends it early.
+                val oldest = recentActionTimestamps.peek() ?: rateLimitNow
+                val untilDrained = (oldest + RATE_LIMIT_WINDOW_MS - rateLimitNow)
+                    .coerceAtLeast(RATE_LIMIT_PAUSE_MS)
+                val cap = activeIntensity.actionsPerHour
+                sleepRespectingConstraints(untilDrained, s, endOnNetworkChangeFrom = networkSeen) {
+                    effectiveIntensity(profile.getProfile())?.actionsPerHour != cap
+                }
                 continue
             }
 
@@ -759,7 +906,24 @@ class PoisonEngine @Inject constructor(
                 module.isEnabled() && (circuitBreakerUntil[name] ?: 0L) <= now
             }
             if (availableModules.isEmpty()) {
-                delay(constraintRetryMs)
+                // When the first enabled module may retry. A permanent break (Long.MAX_VALUE, a
+                // failed blocklist) never comes due, and a disabled module's backoff is irrelevant.
+                val nextRetryAt = allModules
+                    .filter { it.isEnabled() }
+                    .mapNotNull { circuitBreakerUntil[it::class.simpleName ?: return@mapNotNull null] }
+                    .filter { it in (now + 1) until Long.MAX_VALUE }
+                    .minOrNull()
+                if (nextRetryAt != null) {
+                    // Every enabled module is backing off: wake when the first may retry (#335).
+                    sleepRespectingConstraints(
+                        (nextRetryAt - now).coerceIn(constraintRetryMs, MAX_BACKOFF_MS), s
+                    )
+                } else {
+                    // Nothing that can run: no reason to wake the phone. Settings changes come
+                    // from the app, which has the device awake.
+                    releaseLock(s)
+                    delay(constraintRetryMs)
+                }
                 continue
             }
 
@@ -769,6 +933,10 @@ class PoisonEngine @Inject constructor(
             // Re-check enable state to avoid acting on a stale snapshot
             if (!module.isEnabled()) continue
 
+            // Hold the CPU for the action and the bookkeeping after it (#335). Released when the
+            // loop next waits; the timeout only bounds a module that hangs.
+            acquireLock(s)
+
             // Write-ahead log — track execution time to subtract from scheduled delay
             val execStart = clock.currentTimeMillis()
             val logEntry = try {
@@ -776,6 +944,11 @@ class PoisonEngine @Inject constructor(
                     // Success — reset failure counter
                     failureCounts.remove(moduleName)
                 }
+            } catch (ce: CancellationException) {
+                // stop() during the action. Not a module failure: rethrow, or this cancelled loop
+                // would go on to count a failure and wait, touching the lock and alarm that a
+                // newly started run may already own (#335).
+                throw ce
             } catch (e: Exception) {
                 val count = (failureCounts[moduleName] ?: 0) + 1
                 failureCounts[moduleName] = count
@@ -790,11 +963,13 @@ class PoisonEngine @Inject constructor(
                 } else {
                     Timber.e(e, "Module $moduleName failed for $category ($count/$MAX_CONSECUTIVE_FAILURES)")
                 }
-                delay(FAILURE_RETRY_DELAY_MS)
+                sleepRespectingConstraints(FAILURE_RETRY_DELAY_MS, s)
                 continue
             }
             try {
                 actionLogDao.insert(logEntry)
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 Timber.e(e, "Failed to insert action log entry")
             }
@@ -823,7 +998,7 @@ class PoisonEngine @Inject constructor(
             if (logEntry.success) lastCategory = executedCategory
             val effectiveDelay = maxOf(0L, scheduledMs - execElapsed)
             Timber.d("Action: $moduleName/$category exec=${execElapsed}ms scheduled=${scheduledMs}ms effective=${effectiveDelay}ms")
-            sleepRespectingConstraints(effectiveDelay)
+            sleepRespectingConstraints(effectiveDelay, s)
         }
     }
 
@@ -836,14 +1011,153 @@ class PoisonEngine @Inject constructor(
      * quiet-hours-sized delay the engine slept through while reporting ACTIVE. The chunk
      * sum equals [totalMs] exactly when nothing trips, so the Poisson pacing is preserved.
      */
-    private suspend fun sleepRespectingConstraints(totalMs: Long) {
-        var remaining = totalMs
-        while (remaining > 0) {
-            val chunk = minOf(remaining, SLEEP_CONSTRAINT_RECHECK_MS)
-            delay(chunk)
-            remaining -= chunk
-            if (remaining > 0 && checkConstraints(profile.getProfile()) != null) return
+    private suspend fun sleepRespectingConstraints(
+        totalMs: Long,
+        s: Long,
+        /**
+         * When set, a network change after this [networkChanges] value ends the sleep at once.
+         * A change of network can change the allowed rate, and with the CPU suspended the
+         * [stopEarly] check between chunks would not run until the drain alarm (#335).
+         */
+        endOnNetworkChangeFrom: Long? = null,
+        stopEarly: (() -> Boolean)? = null,
+    ) {
+        // No wait: keep holding the lock straight into the next action. Releasing here, with no
+        // alarm set, would let the CPU suspend mid-loop at HIGH intensity, where the gap is often
+        // shorter than the action (#335).
+        if (totalMs <= 0) return
+        // Nothing to do until the next action; let the CPU sleep (#335).
+        releaseLock(s)
+        // Coroutine delays run on a clock that stops while the CPU is suspended, so with the
+        // screen off a delay alone never ends. An alarm on elapsed realtime, which keeps counting
+        // through sleep, wakes the CPU when the wait is due (#335). The wait ends when EITHER the
+        // delays add up to [totalMs] (the device stayed awake: exactly the old pacing) OR elapsed
+        // realtime reaches the deadline (the device slept through some of it).
+        //
+        // Every pass suspends, so the loop can never spin: elapsed realtime is only consulted
+        // AFTER a wait. A wakeup that ends a wait before the deadline means the alarm fired early,
+        // so it is set again and the wait goes on; past [MAX_EARLY_WAKES] the rest of this sleep
+        // stops trusting the wake source and uses plain delays.
+        val deadline = clock.elapsedRealtime() + totalMs
+        scheduleWakeup(s, deadline)
+        try {
+            var slept = 0L
+            var earlyWakes = 0
+            while (slept < totalMs) {
+                val realRemaining = (deadline - clock.elapsedRealtime()).coerceAtLeast(1L)
+                val chunk = minOf(totalMs - slept, realRemaining, SLEEP_CONSTRAINT_RECHECK_MS)
+                val outcome = awaitChunk(chunk, trustWakeup = earlyWakes < MAX_EARLY_WAKES, endOnNetworkChangeFrom)
+                if (outcome == WaitOutcome.NETWORK_CHANGED) return
+                val woken = outcome == WaitOutcome.WOKEN
+                // A wakeup is not time slept; elapsed realtime decides instead.
+                if (!woken) slept += chunk
+                if (clock.elapsedRealtime() >= deadline) return
+                if (woken) {
+                    earlyWakes++
+                    scheduleWakeup(s, deadline) // the alarm that fired is spent
+                    releaseHandover(s) // back to waiting: the alarm's hold is no longer needed
+                }
+                if (slept < totalMs) {
+                    if (checkConstraints(profile.getProfile()) != null) return
+                    if (stopEarly?.invoke() == true) return
+                }
+            }
+        } finally {
+            if (s == session) runCatching { wakeup.cancel() }
         }
+    }
+
+    private enum class WaitOutcome { ELAPSED, WOKEN, NETWORK_CHANGED }
+
+    /**
+     * Wait one chunk: for the wakeup (or a plain delay once wakeups are no longer trusted), and,
+     * when [networkSeen] is set, for a network change after it, whichever comes first.
+     */
+    private suspend fun awaitChunk(chunk: Long, trustWakeup: Boolean, networkSeen: Long?): WaitOutcome {
+        suspend fun timed(): WaitOutcome =
+            if (trustWakeup) {
+                if (wakeup.await(chunk)) WaitOutcome.WOKEN else WaitOutcome.ELAPSED
+            } else {
+                delay(chunk)
+                WaitOutcome.ELAPSED
+            }
+        if (networkSeen == null) return timed()
+        if (networkChanges.value != networkSeen) return WaitOutcome.NETWORK_CHANGED
+        return coroutineScope {
+            val timer = async { timed() }
+            val network = async {
+                networkChanges.first { it != networkSeen }
+                WaitOutcome.NETWORK_CHANGED
+            }
+            select<WaitOutcome> {
+                timer.onAwait { it }
+                network.onAwait { it }
+            }.also {
+                timer.cancel()
+                network.cancel()
+            }
+        }
+    }
+
+    /** Take the CPU for an action, if [s] is still the current run. */
+    private fun acquireLock(s: Long) {
+        if (s != session) return
+        wakeLock.acquire(ACTION_WAKE_LOCK_TIMEOUT_MS)
+        // The engine holds the CPU itself now; the wakeup's short hold can go (#335).
+        wakeup.releaseHandover()
+    }
+
+    /** Let the CPU sleep, unless a newer run owns the lock now. */
+    private fun releaseLock(s: Long) {
+        if (s != session) return
+        wakeLock.release()
+        wakeup.releaseHandover()
+    }
+
+    /** Drop the wakeup's short hold on the CPU, unless a newer run owns the wakeup now. */
+    private fun releaseHandover(s: Long) {
+        if (s == session) wakeup.releaseHandover()
+    }
+
+    /** Set the next-action wakeup, unless a newer run owns the alarm now. */
+    private fun scheduleWakeup(s: Long, atElapsedRealtimeMs: Long) {
+        if (s == session) wakeup.schedule(atElapsedRealtimeMs)
+    }
+
+    /** Let the CPU sleep and drop any pending wakeup. Safe to call more than once. */
+    private fun releaseWake() {
+        runCatching { wakeup.cancel() }
+        runCatching { wakeLock.release() }
+    }
+
+    /** A pause because the current network may not be used: none at all, or mobile data or a
+     *  metered Wi-Fi with the mobile tier Off. These resign after 30 awake minutes. */
+    private fun isNetworkSettingsPause(state: EngineState): Boolean =
+        state == EngineState.PAUSED_WIFI || state == EngineState.PAUSED_METERED_WIFI
+
+    /** A pause that ends on a network change, so the loop waits on the network callback. */
+    private fun isNetworkPause(state: EngineState): Boolean =
+        isNetworkSettingsPause(state) || state == EngineState.PAUSED_NETWORK_BLOCKED
+
+    /**
+     * Whether the device is asleep in the sense that cuts background network: in Doze, or with the
+     * screen off. A failed read counts as awake, which keeps the old resign behavior.
+     */
+    private fun isDeviceAsleep(): Boolean {
+        val pm = runCatching { context.getSystemService(PowerManager::class.java) }.getOrNull() ?: return false
+        val idle = runCatching { pm.isDeviceIdleMode }.getOrDefault(false)
+        val interactive = runCatching { pm.isInteractive }.getOrDefault(true)
+        return idle || !interactive
+    }
+
+    /** The power facts that decide whether background work runs, for pause and resign logs. */
+    private fun powerSnapshot(): String {
+        val pm = runCatching { context.getSystemService(PowerManager::class.java) }.getOrNull()
+        fun read(f: (PowerManager) -> Boolean): String =
+            pm?.let { runCatching { f(it).toString() }.getOrNull() } ?: "?"
+        return "deviceIdle=${read { it.isDeviceIdleMode }}, interactive=${read { it.isInteractive }}, " +
+            "ignoringBatteryOptimizations=${read { it.isIgnoringBatteryOptimizations(context.packageName) }}, " +
+            "powerSave=${read { it.isPowerSaveMode }}, networkBlocked=${cachedNetworkBlocked.get()}"
     }
 
     /**
@@ -851,7 +1165,7 @@ class PoisonEngine @Inject constructor(
      * pause: no network at all, or on mobile data with [PoisonProfile.mobileIntensity]
      * set to Off (issue #62).
      */
-    private fun effectiveIntensity(p: PoisonProfile): IntensityLevel? = when (cachedTransport.get()) {
+    private fun effectiveIntensity(p: PoisonProfile): IntensityLevel? = if (cachedNetworkBlocked.get()) null else when (cachedTransport.get()) {
         NetworkTransport.WIFI -> p.intensity
         // Metered WiFi spends the user's data allowance, so it is governed by the mobile
         // budget, not the WiFi one (issue #288).
@@ -865,6 +1179,11 @@ class PoisonEngine @Inject constructor(
     private fun checkConstraints(currentProfile: PoisonProfile): EngineState? {
         // No logging here — this runs every retry tick (and again per 60s sleep chunk).
         // The reason is logged once per transition by [logPauseReason] from runLoop (#158).
+        // Checked first: Android blocking the app is not "no usable network", and the UI and
+        // resign rules for it differ (#335).
+        if (cachedNetworkBlocked.get() && cachedTransport.get() != NetworkTransport.NONE) {
+            return EngineState.PAUSED_NETWORK_BLOCKED
+        }
         if (effectiveIntensity(currentProfile) == null) {
             // Same underlying cause (no budget for this network), but name the metered-WiFi
             // case separately so the UI doesn't claim we're "waiting for a usable network"
@@ -902,11 +1221,14 @@ class PoisonEngine @Inject constructor(
      * still logs each genuine state change.
      */
     private fun logPauseReason(state: EngineState, profile: PoisonProfile) {
+        // Info, not debug, with the power state (#335): these lines are what a user's exported log
+        // has to explain "nothing happened overnight" with.
+        val power = powerSnapshot()
         when (state) {
             EngineState.PAUSED_WIFI ->
-                Timber.d("Paused: no usable network (transport=${cachedTransport.get()}, mobile=${profile.mobileIntensity})")
+                Timber.i("Paused: no usable network (transport=${cachedTransport.get()}, mobile=${profile.mobileIntensity}, $power)")
             EngineState.PAUSED_METERED_WIFI -> {
-                Timber.d("Paused: Wi-Fi is metered and mobile intensity is Off (mobile=${profile.mobileIntensity})")
+                Timber.i("Paused: Wi-Fi is metered and mobile intensity is Off (mobile=${profile.mobileIntensity}, $power)")
                 // The resume constraint for this state is UNMETERED, which on a permanently
                 // metered home network may never fire — so this pause could otherwise last
                 // forever in silence. Say it once, here, on the state transition (#288).
@@ -915,10 +1237,12 @@ class PoisonEngine @Inject constructor(
                 runCatching { com.fauxx.service.postMeteredWifiNotice(context) }
                     .onFailure { Timber.w(it, "Failed to post the metered-Wi-Fi notice") }
             }
-            EngineState.PAUSED_BATTERY -> Timber.d("Paused: battery below threshold")
-            EngineState.PAUSED_BATTERY_SAVER -> Timber.d("Paused: Battery Saver is on")
+            EngineState.PAUSED_NETWORK_BLOCKED ->
+                Timber.i("Paused: Android is blocking this app's network (transport=${cachedTransport.get()}, $power)")
+            EngineState.PAUSED_BATTERY -> Timber.i("Paused: battery below threshold ($power)")
+            EngineState.PAUSED_BATTERY_SAVER -> Timber.i("Paused: Battery Saver is on ($power)")
             EngineState.PAUSED_QUIET_HOURS ->
-                Timber.d("Paused: outside allowed hours (${profile.allowedHoursStart}-${profile.allowedHoursEnd})")
+                Timber.i("Paused: outside allowed hours (${profile.allowedHoursStart}-${profile.allowedHoursEnd}, $power)")
             else -> { /* ACTIVE / PAUSED_RATE_LIMIT / STOPPED log via their own paths */ }
         }
     }
@@ -967,9 +1291,10 @@ class PoisonEngine @Inject constructor(
         reason: String? = null
     ) {
         hasResigned = true
+        releaseWake()
         val sessionDurationMs = clock.elapsedRealtime() - engineStartElapsedMs
         val ctx = reason ?: state?.toString() ?: "unknown"
-        Timber.i("Engine resigning ($ctx) after ${sessionDurationMs}ms; resume spec: $spec")
+        Timber.i("Engine resigning ($ctx) after ${sessionDurationMs}ms; resume spec: $spec (${powerSnapshot()})")
         onLongPause?.invoke(spec)
     }
 
@@ -1013,6 +1338,16 @@ class PoisonEngine @Inject constructor(
      *   app, so a resigned engine could only come back through a tap-to-resume notification.
      *   Staying up costs one wake per [BATTERY_SAVER_RECHECK_MS] and resumes the moment Battery
      *   Saver ends.
+     * - [idleInducedNetworkPause]: never resign on a [EngineState.PAUSED_WIFI] or
+     *   [EngineState.PAUSED_METERED_WIFI] pause while the device is asleep (#335). Sleep cuts the
+     *   network, or drops Wi-Fi so the default network becomes mobile data or a metered hotspot,
+     *   which a user with mobile Off sees as either pause. A resigned engine could only come back
+     *   through a tap-to-resume notification, so it stayed off until the user picked up the
+     *   phone. Staying up costs nothing while asleep: the loop waits on the network callback, not
+     *   on an alarm. Thirty awake minutes in either pause still resign, as before.
+     * - [EngineState.PAUSED_NETWORK_BLOCKED]: never resign (#335). The network is up, so a
+     *   network constraint would be met at once and the engine would resign, restart and block
+     *   again; the loop resumes on the network callback instead.
      */
     @VisibleForTesting
     internal fun decidePauseAction(
@@ -1020,8 +1355,12 @@ class PoisonEngine @Inject constructor(
         currentProfile: PoisonProfile,
         pauseElapsedMs: Long,
         @Suppress("UNUSED_PARAMETER") totalRuntimeMs: Long,
-        nowMs: Long = clock.currentTimeMillis()
+        nowMs: Long = clock.currentTimeMillis(),
+        idleInducedNetworkPause: Boolean = false,
     ): PauseDecision {
+        if (idleInducedNetworkPause && isNetworkSettingsPause(state)) {
+            return PauseDecision.Continue
+        }
         return when (state) {
             EngineState.PAUSED_QUIET_HOURS ->
                 PauseDecision.Resign(ResumeSpec.AtTime(nextAllowedHoursStartMs(currentProfile, nowMs)))
@@ -1046,6 +1385,7 @@ class PoisonEngine @Inject constructor(
                     PauseDecision.Resign(ResumeSpec.WhenConstraintMet(batteryNotLow = true))
                 else PauseDecision.Continue
             EngineState.PAUSED_BATTERY_SAVER -> PauseDecision.Continue
+            EngineState.PAUSED_NETWORK_BLOCKED -> PauseDecision.Continue
             else -> PauseDecision.Continue
         }
     }
