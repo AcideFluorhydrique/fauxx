@@ -716,9 +716,11 @@ class CustomDnsRouterTest {
         return server to certificate
     }
 
+    // The server IP keeps "localhost" from being looked up over the default preset's DoH, a real
+    // network call whose 5 s timeout matches the tests' own and made them flaky on CI.
     private fun selfSigned(server: okhttp3.mockwebserver.MockWebServer, pinnedKey: String = "") = PoisonProfile(
         dnsMode = DnsMode.DOH, dohProvider = DohPresets.CUSTOM_ID,
-        dohCustomUrl = "https://localhost:${server.port}/dns-query",
+        dohCustomUrl = "https://localhost:${server.port}/dns-query", dohCustomServerIp = "127.0.0.1",
         dohSkipCertificateCheck = true, dohPinnedKey = pinnedKey, routeDnsNoise = true,
     )
 
