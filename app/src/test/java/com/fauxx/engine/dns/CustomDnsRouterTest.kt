@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -160,6 +161,9 @@ class CustomDnsRouterTest {
         override.accept = false
         profile.value = doh()
         router.start()
+        // The settings collector's first value is the one start() applied; it must not try again
+        // (the backoff retry owns that), whichever of the two runs first.
+        withTimeout(5_000) { router.settingsApplied.first { it >= 1 } }
         assertEquals(listOf("set", "clear"), override.calls)
         assertTrue(router.health.value is DnsHealth.Degraded)
     }

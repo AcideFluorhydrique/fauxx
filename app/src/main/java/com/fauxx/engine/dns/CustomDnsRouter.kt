@@ -229,6 +229,14 @@ class CustomDnsRouter @Inject constructor(
     private var retryJob: Job? = null
     private var retryAttempt = 0
 
+    /**
+     * The settings last asked for, by [start] or the collector (retries re-apply these). The
+     * collector skips a value equal to it: its first value is usually the one [start] just
+     * applied, and if that apply lost routing, an immediate second attempt would only pre-empt
+     * the backoff retry.
+     */
+    private var lastRequested: Settings? = null
+
     /** Backoff for re-applying settings after routing was lost; the last value repeats. */
     @VisibleForTesting
     internal var retryDelaysMs: List<Long> = RETRY_DELAYS_MS
@@ -258,11 +266,11 @@ class CustomDnsRouter @Inject constructor(
             applyLocked(settingsOf(profileRepo.getProfile()))
             settingsJob?.cancel()
             // No drop(1): a change landing between the apply above and this subscription would
-            // arrive as the flow's first value, and dropping it would lose the change. applyLocked
-            // is idempotent for unchanged settings, so seeing the current value again costs nothing.
+            // arrive as the flow's first value, and dropping it would lose the change. The value
+            // start() just applied is skipped by comparison instead (see lastRequested).
             settingsJob = scope.launch {
                 profileRepo.profiles.map(::settingsOf).distinctUntilChanged().collect { settings ->
-                    mutex.withLock { if (active) applyLocked(settings) }
+                    mutex.withLock { if (active && settings != lastRequested) applyLocked(settings) }
                     settingsApplied.value++
                 }
             }
@@ -320,6 +328,7 @@ class CustomDnsRouter @Inject constructor(
 
     private suspend fun applyLocked(settings: Settings, fromRetry: Boolean = false) {
         if (!fromRetry) {
+            lastRequested = settings
             // A new setting, or a fresh start: any pending retry was for the old one.
             cancelRetryLocked()
             retryAttempt = 0
