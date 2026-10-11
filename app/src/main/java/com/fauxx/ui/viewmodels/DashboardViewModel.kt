@@ -190,6 +190,22 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Whether this is a Samsung device whose user has not yet dismissed the sleeping-apps steps
+     * (#335). The dashboard also requires protection to be on; see
+     * [com.fauxx.ui.BackgroundGuidance.showSamsungSleepCard].
+     */
+    val samsungSleepGuidanceDismissed: StateFlow<Boolean> = dataStore.data
+        .map { it[PreferenceKeys.SAMSUNG_SLEEP_GUIDANCE_DISMISSED] == true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    /** Persists the user's choice to dismiss the Samsung sleeping-apps steps. */
+    fun dismissSamsungSleepGuidance() {
+        viewModelScope.launch {
+            dataStore.edit { it[PreferenceKeys.SAMSUNG_SLEEP_GUIDANCE_DISMISSED] = true }
+        }
+    }
+
     val uiState: StateFlow<DashboardUiState> = combine(
         _enabled,
         windowedActionCount(DAY_MS),

@@ -120,7 +120,7 @@ class PoisonEngineRateLimitTest {
         engine.start()
         // Scheduler returns 1s per action, so ~1 success accrues per virtual second. With a
         // LOW cap of 12, ~20s of virtual+fake time pushes the window past the cap and the loop
-        // flips to PAUSED_RATE_LIMIT (then idles in RATE_LIMIT_PAUSE_MS chunks).
+        // flips to PAUSED_RATE_LIMIT (then sleeps until the oldest action leaves the window, #335).
         advanceVirtualTime(testScheduler, by = 20_000)
 
         assertEquals(EngineState.PAUSED_RATE_LIMIT, engine.engineState.value)
@@ -151,13 +151,15 @@ class PoisonEngineRateLimitTest {
 
         // Slide the window: jump the wall clock past RATE_LIMIT_WINDOW_MS (1h) in one step
         // (rather than stepping ~3660 1s iterations, which is both slow and memory-heavy on
-        // the shared fork), then advance virtual time enough for the 15s rate-limit pause to
-        // expire and the loop to re-evaluate. The prune empties the now-stale queue and
-        // dispatch resumes. We assert resumption (calls increased) rather than the exact
-        // end-state, because with the window empty the engine immediately starts re-filling
-        // and the instantaneous state at any later point is timing-sensitive.
+        // the shared fork). The engine is sleeping until that drain time (#335); the jump
+        // carries elapsed realtime past it, which the sleep notices at the end of its current
+        // re-check chunk (at most 60 s; in production the alarm ends it at once). Then the
+        // prune empties the now-stale queue and dispatch resumes. We assert resumption (calls
+        // increased) rather than the exact end-state, because with the window empty the engine
+        // immediately starts re-filling and the instantaneous state at any later point is
+        // timing-sensitive.
         fakeClock.nowMs += 61L * 60 * 1000
-        advanceVirtualTime(testScheduler, by = 40_000)
+        advanceVirtualTime(testScheduler, by = 70_000)
 
         // More actions fired after the slide than at the moment the cap was first hit: this
         // is the load-bearing proof that the window slid and dispatch resumed.

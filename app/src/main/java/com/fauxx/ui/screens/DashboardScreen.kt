@@ -65,6 +65,7 @@ import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.EngineState
 import com.fauxx.engine.webview.WebViewUpdateHint
 import com.fauxx.engine.webview.WebViewUpdateRoute
+import com.fauxx.ui.BackgroundGuidance
 import com.fauxx.ui.format.displayNameRes
 import com.fauxx.ui.format.personaAgeRangeRes
 import com.fauxx.ui.format.personaProfessionRes
@@ -85,6 +86,7 @@ fun DashboardScreen(
     val showFullVersionNotice by viewModel.showFullVersionNotice.collectAsState()
     val webViewWarning by viewModel.webViewWarning.collectAsState()
     val customDnsNotice by viewModel.customDnsNotice.collectAsState()
+    val samsungSleepGuidanceDismissed by viewModel.samsungSleepGuidanceDismissed.collectAsState()
     val context = LocalContext.current
 
     // Re-read whether Google Play is installed whenever the dashboard comes back, so the WebView
@@ -103,6 +105,13 @@ fun DashboardScreen(
         )
     }
     var showBatteryExplainer by remember { mutableStateOf(false) }
+
+    // Re-read on every return to the screen (#335): the user may have changed it in system
+    // settings, reached some other way than through the launcher below.
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        batteryOptimized = powerManager?.isIgnoringBatteryOptimizations(context.packageName) == false
+        onPauseOrDispose { }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -190,11 +199,35 @@ fun DashboardScreen(
 
         // Battery-optimization warning: the OS will doze Fauxx during screen-off if
         // the app isn't on the unrestricted list. Shown until the user grants exemption.
-        if (batteryOptimized && uiState.engineEnabled) {
+        if (BackgroundGuidance.showBatteryOptimizationCard(uiState.engineEnabled, !batteryOptimized)) {
             WarningCard(
                 text = stringResource(R.string.dashboard_warning_battery_optimized),
                 actionLabel = stringResource(R.string.dashboard_warning_action_allow),
                 onAction = { showBatteryExplainer = true }
+            )
+        }
+
+        // Samsung puts apps to sleep on top of Android's battery optimization (#335), so its users
+        // need these steps even with the exemption granted.
+        if (BackgroundGuidance.showSamsungSleepCard(Build.MANUFACTURER, uiState.engineEnabled, samsungSleepGuidanceDismissed)) {
+            SamsungSleepCard(
+                // The battery card above already asks for unrestricted use; don't say it twice.
+                includeUnrestrictedStep = !BackgroundGuidance.showBatteryOptimizationCard(
+                    uiState.engineEnabled, !batteryOptimized
+                ),
+                onOpenAppSettings = {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", context.packageName, null)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    runCatching { context.startActivity(intent) }
+                },
+                onOpenGuide = {
+                    val intent = Intent(Intent.ACTION_VIEW, BackgroundGuidance.SAMSUNG_GUIDE_URL.toUri())
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    runCatching { context.startActivity(intent) }
+                },
+                onDismiss = viewModel::dismissSamsungSleepGuidance
             )
         }
 
@@ -352,6 +385,8 @@ private fun ProtectionCard(
                             EngineState.PAUSED_WIFI -> stringResource(R.string.dashboard_engine_state_paused_wifi)
                             EngineState.PAUSED_METERED_WIFI ->
                                 stringResource(R.string.dashboard_engine_state_paused_metered_wifi)
+                            EngineState.PAUSED_NETWORK_BLOCKED ->
+                                stringResource(R.string.dashboard_engine_state_paused_network_blocked)
                             EngineState.PAUSED_BATTERY -> stringResource(R.string.dashboard_engine_state_paused_battery)
                             EngineState.PAUSED_BATTERY_SAVER ->
                                 stringResource(R.string.dashboard_engine_state_paused_battery_saver)
@@ -374,6 +409,16 @@ private fun ProtectionCard(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.dashboard_metered_wifi_explainer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            // The network is up but Android is blocking Fauxx's use of it (#335). Mobile data
+            // would not help, so no "use mobile data" button: point at the restriction instead.
+            if (engineState == EngineState.PAUSED_NETWORK_BLOCKED) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.dashboard_network_blocked_explainer),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -784,6 +829,53 @@ private fun openWebViewUpdateRoute(context: android.content.Context, route: WebV
             runCatching { context.startActivity(details) }
         }
         WebViewUpdateRoute.None -> Unit
+    }
+}
+
+/**
+ * Samsung's sleeping-apps steps (#335), with the app's settings page and a fuller guide. Advice,
+ * not an error, so a neutral container; buttons stacked so long translations and large font
+ * scales never squeeze the primary action.
+ */
+@Composable
+private fun SamsungSleepCard(
+    includeUnrestrictedStep: Boolean,
+    onOpenAppSettings: () -> Unit,
+    onOpenGuide: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            val steps = buildList {
+                add(stringResource(R.string.dashboard_samsung_sleep_intro))
+                if (includeUnrestrictedStep) add(stringResource(R.string.dashboard_samsung_sleep_step_unrestricted))
+                add(stringResource(R.string.dashboard_samsung_sleep_step_never_sleeping))
+                add(stringResource(R.string.dashboard_samsung_sleep_note))
+            }
+            Text(
+                text = steps.joinToString("\n\n"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End
+            ) {
+                TextButton(onClick = onOpenAppSettings) {
+                    Text(stringResource(R.string.dashboard_samsung_sleep_open_settings))
+                }
+                TextButton(onClick = onOpenGuide) {
+                    Text(stringResource(R.string.dashboard_samsung_sleep_guide))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.dashboard_samsung_sleep_dismiss))
+                }
+            }
+        }
     }
 }
 

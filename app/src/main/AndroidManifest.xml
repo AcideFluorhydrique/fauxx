@@ -122,6 +122,12 @@
             android:name=".service.AlarmResumeReceiver"
             android:exported="false" />
 
+        <!-- Wakes the CPU for the engine's next action while the screen is off (#335). Not
+             exported: only the app's own allow-while-idle alarm targets it. -->
+        <receiver
+            android:name=".service.EngineWakeupReceiver"
+            android:exported="false" />
+
         <!-- Headless "Start" action on the resume notification (#121). Not exported: only the
              app's own notification action targets it. -->
         <receiver
