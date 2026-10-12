@@ -1,0 +1,7 @@
+• Nouveau : « Ne jamais revenir au DNS de l'appareil » pour le DNS personnalisé. Si votre résolveur ne répond plus, les pages de Fauxx échouent au lieu d'utiliser discrètement le DNS de votre appareil, et le tableau de bord en indique la raison (#333).
+• Nouveau : une URL DNS-over-HTTPS personnalisée peut désormais être en http:// pour un résolveur sur votre propre réseau, comme Pi-hole ou AdGuard Home. Les Paramètres préviennent que ces requêtes ne sont pas chiffrées (#334).
+• Nouveau : le tableau de bord peut vous signaler quand quelque chose sur votre téléphone ou votre réseau bloque les traqueurs que les leurres de Fauxx doivent atteindre, et affiche une indication quand la protection contre le pistage des applis de DuckDuckGo peut en être la cause (#341).
+• Corrigé : écran éteint, Fauxx cessait de générer de l'activité jusqu'à ce que le téléphone soit repris en main. Il continue désormais au rythme permis par Android et n'abandonne plus pendant la nuit après une coupure réseau (#335).
+• Corrigé : l'avertissement WebView indique désormais votre WebView, sa version et les fonctions qui lui manquent, et son bouton n'envoie plus les téléphones sans Google vers « No such app » de F-Droid (#332, #336).
+• Corrigé : modifier les réglages du DNS personnalisé pouvait brièvement envoyer des requêtes au DNS de votre appareil (#333).
+• Corrigé : les réponses données lors de la première configuration orientent désormais les leurres immédiatement.

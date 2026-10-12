@@ -1,0 +1,7 @@
+• Nuevo: «No volver nunca al DNS del dispositivo» para el DNS personalizado. Si tu resolutor deja de responder, las páginas de Fauxx fallan en lugar de usar en silencio el DNS de tu dispositivo, e Inicio indica el motivo (#333).
+• Nuevo: una URL de DNS sobre HTTPS personalizada ahora puede ser http:// para un resolutor en tu propia red, como Pi-hole o AdGuard Home. Ajustes avisa de que esas consultas no van cifradas (#334).
+• Nuevo: Inicio puede avisarte cuando algo en tu teléfono o en tu red bloquea los rastreadores que los señuelos de Fauxx necesitan alcanzar, y muestra una pista cuando puede deberse a la Protección de rastreo de apps de DuckDuckGo (#341).
+• Corregido: con la pantalla apagada, Fauxx dejaba de generar actividad hasta que se volvía a usar el teléfono. Ahora sigue al ritmo que permite Android y ya no se rinde durante la noche tras un corte de red (#335).
+• Corregido: el aviso de WebView ahora indica tu WebView, su versión y las funciones que le faltan, y su botón ya no envía a los teléfonos sin Google a «No such app» de F-Droid (#332, #336).
+• Corregido: cambiar los ajustes del DNS personalizado podía enviar brevemente consultas al DNS de tu dispositivo (#333).
+• Corregido: las respuestas de la configuración inicial ahora orientan los señuelos desde el primer momento.

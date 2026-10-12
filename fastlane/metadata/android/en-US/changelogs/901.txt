@@ -1,0 +1,7 @@
+• New: "Never fall back to your device's DNS" for custom DNS. If your resolver stops answering, Fauxx's pages fail instead of quietly using your device's DNS, and the dashboard says why (#333).
+• New: a custom DNS-over-HTTPS URL can now be http:// for a resolver on your own network, such as Pi-hole or AdGuard Home. Settings warns that these lookups are not encrypted (#334).
+• New: the dashboard can tell you when something on your phone or network is blocking the trackers Fauxx's decoys need to reach, and shows a hint when DuckDuckGo App Tracking Protection may be doing it (#341).
+• Fixed: with the screen off, Fauxx stopped generating activity until the phone was picked up. It now keeps going at the pace Android allows, and no longer gives up overnight after a network outage (#335).
+• Fixed: the WebView warning now names your WebView, its version and the features it lacks, and its button no longer sends de-Googled phones to F-Droid's "No such app" (#332, #336).
+• Fixed: changing custom DNS settings could briefly send lookups to your device's DNS (#333).
+• Fixed: answers given during first-time setup now steer the decoys right away.
