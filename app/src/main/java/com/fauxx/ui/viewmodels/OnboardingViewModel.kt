@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.di.PreferenceKeys
+import com.fauxx.engine.PoisonProfileRepository
+import com.fauxx.targeting.TargetingEngine
 import com.fauxx.targeting.layer1.AgeRange
 import com.fauxx.targeting.layer1.CustomInterestMapper
 import com.fauxx.targeting.layer1.DemographicProfileDao
@@ -18,6 +20,7 @@ import com.fauxx.targeting.layer1.UserDemographicProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -36,7 +39,9 @@ data class OnboardingUiState(
 class OnboardingViewModel @Inject constructor(
     private val dao: DemographicProfileDao,
     private val dataStore: DataStore<Preferences>,
-    private val customInterestMapper: CustomInterestMapper
+    private val customInterestMapper: CustomInterestMapper,
+    private val profileRepo: PoisonProfileRepository,
+    private val targetingEngine: TargetingEngine
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
@@ -112,6 +117,10 @@ class OnboardingViewModel @Inject constructor(
                 state.profession != null || state.region != null ||
                 state.interests.isNotEmpty() || state.customInterests.isNotEmpty()
 
+            // First run only: this screen also edits the profile later (#29), and an edit must
+            // not switch Layer 1 back on for a user who turned it off.
+            val firstRun = dataStore.data.first()[PreferenceKeys.ONBOARDING_COMPLETED] != true
+
             if (hasData) {
                 dao.upsert(
                     UserDemographicProfile(
@@ -125,6 +134,13 @@ class OnboardingViewModel @Inject constructor(
                         else null
                     )
                 )
+                if (firstRun) {
+                    // Answers given at first launch are meant to steer the decoys. Layer 1 used to
+                    // stay off until the user found its switch on the Targeting screen, so the
+                    // answers did nothing.
+                    targetingEngine.setLayer1Enabled(true)
+                    profileRepo.updateProfile { it.copy(layer1Enabled = true) }
+                }
             }
             dataStore.edit { it[PreferenceKeys.ONBOARDING_COMPLETED] = true }
         }

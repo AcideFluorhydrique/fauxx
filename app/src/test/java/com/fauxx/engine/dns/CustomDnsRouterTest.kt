@@ -40,7 +40,9 @@ class CustomDnsRouterTest {
         @Volatile var clears: Boolean = true,
         var clearDelayMs: Long = 0L,
     ) : WebViewProxyOverride {
-        val calls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+        // Copy-on-write: tests iterate it (count, in) while the router appends from its own
+        // threads, and a synchronizedList throws ConcurrentModificationException on that.
+        val calls: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
         @Volatile var port: Int? = null
         @Volatile var throwOnSet = false
         @Volatile var setGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
@@ -100,7 +102,12 @@ class CustomDnsRouterTest {
     private fun isServing(port: Int) = runCatching { Socket("127.0.0.1", port).close() }.isSuccess
 
     @After
-    fun tearDown() = runBlocking { router.stop() }
+    fun tearDown() = runBlocking {
+        // A test that fails while a set() is held at setGate leaves the router parked inside its
+        // lock; release it, or stop() waits on that lock forever and the failure becomes a hang.
+        override.setGate?.complete(Unit)
+        withTimeout(10_000) { router.stop() }
+    }
 
     private fun doh(provider: String = DohPresets.DEFAULT_ID, url: String = "") =
         PoisonProfile(dnsMode = DnsMode.DOH, dohProvider = provider, dohCustomUrl = url)
@@ -411,7 +418,11 @@ class CustomDnsRouterTest {
         // first emission would (rightly) route again at once, hiding the state under test.
         withTimeout(5_000) { while (router.settingsApplied.value < 1) delay(20) }
         made.last().second(java.io.IOException("accept loop died"))
-        withTimeout(5_000) { while (router.browsingBlockedReason() == null) delay(20) }
+        // The router marks routing lost a moment before it publishes the degraded health; wait
+        // for both, or a test can read the health in between and see it still Healthy.
+        withTimeout(5_000) {
+            while (router.browsingBlockedReason() == null || router.health.value !is DnsHealth.Degraded) delay(20)
+        }
         return port
     }
 

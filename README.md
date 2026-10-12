@@ -180,7 +180,7 @@ On first launch, Fauxx offers an optional demographic self-report flow:
 - Profession
 - Region
 
-Every screen has a visible "Skip" button. You can skip all of it and run on the default persona-shaped decoys.
+Every screen has a visible "Skip" button. You can skip all of it and run on the default persona-shaped decoys. If you answer anything, Layer 1 is switched on when you finish, so your answers steer the decoys straight away; you can turn it off on the Targeting screen.
 
 ### Dashboard
 
