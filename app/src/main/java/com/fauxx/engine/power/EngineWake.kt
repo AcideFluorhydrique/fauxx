@@ -210,7 +210,14 @@ class AlarmEngineWakeup @Inject constructor(
     /** Called by [EngineWakeupReceiver] when the alarm for [seq] fires. */
     fun onAlarm(seq: Long) {
         if (seq != current) {
-            Timber.d("Engine wakeup $seq is stale (current $current); ignored")
+            // No alarm pending is the normal case (#349): the engine's own timer fired first and
+            // cancel() could not retract the broadcast already sent, or the engine has stopped.
+            // These end up in exported logs, so only a superseded alarm reads as stale.
+            if (current == -1L) {
+                Timber.d("Engine wakeup $seq arrived after the engine was already awake or stopped; nothing to do")
+            } else {
+                Timber.d("Engine wakeup $seq is stale (wakeup $current is pending); ignored")
+            }
             return
         }
         // The system holds the CPU only for the broadcast itself. Hold it a little longer, on a
