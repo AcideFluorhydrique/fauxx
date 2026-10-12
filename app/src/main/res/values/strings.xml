@@ -474,7 +474,7 @@
     <!-- Dashboard screen — warnings, engine state, donut chart, persona, noise ratio -->
     <string name="dashboard_warning_notification_denied">Notification permission denied — background activity indicator is hidden. Grant notification permission in Settings to see the status notification.</string>
     <string name="dashboard_warning_action_open_settings">Open settings</string>
-    <string name="dashboard_warning_battery_optimized">Android battery optimization is restricting Fauxx. Background activity will pause when the screen is off. Allow unrestricted background usage to keep the engine running.</string>
+    <string name="dashboard_warning_battery_optimized">Android battery optimization is restricting Fauxx. With the screen off, Android can space its activity much further apart. Allow unrestricted background usage to keep the engine on schedule.</string>
     <string name="dashboard_warning_action_allow">Allow</string>
     <string name="dashboard_engine_state_active">Generating synthetic activity</string>
     <string name="dashboard_engine_state_paused_wifi">Paused — waiting for a usable network</string>

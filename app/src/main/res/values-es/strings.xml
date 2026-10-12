@@ -479,7 +479,7 @@
     <!-- Dashboard screen — LLM-DRAFTED 2026-05-16, PENDING NATIVE-SPEAKER REVIEW -->
     <string name="dashboard_warning_notification_denied">Permiso de notificaciones denegado — el indicador de actividad en segundo plano está oculto. Concede el permiso de notificaciones en Ajustes para ver la notificación de estado.</string>
     <string name="dashboard_warning_action_open_settings">Abrir ajustes</string>
-    <string name="dashboard_warning_battery_optimized">La optimización de batería de Android está restringiendo Fauxx. La actividad en segundo plano se pausará cuando la pantalla esté apagada. Permite el uso sin restricciones en segundo plano para que el motor siga funcionando.</string>
+    <string name="dashboard_warning_battery_optimized">La optimización de batería de Android está restringiendo Fauxx. Con la pantalla apagada, Android puede espaciar mucho su actividad. Permite el uso sin restricciones en segundo plano para que el motor mantenga su ritmo.</string>
     <string name="dashboard_warning_action_allow">Permitir</string>
     <string name="dashboard_engine_state_active">Generando actividad sintética</string>
     <string name="dashboard_engine_state_paused_wifi">En pausa — esperando una red utilizable</string>

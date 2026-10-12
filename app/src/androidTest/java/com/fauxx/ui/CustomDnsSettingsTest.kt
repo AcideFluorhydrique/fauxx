@@ -135,14 +135,27 @@ class CustomDnsSettingsTest {
     fun anInvalidUrlIsRejected_andAValidOneIsSavedAndSelected() {
         setContent()
         val field = composeRule.onNodeWithText("Custom DNS-over-HTTPS URL")
+        // http:// is only for a resolver on a private network (#334); a public host stays invalid.
         field.performScrollTo().performTextInput("http://dns.example/dns-query")
         composeRule.onNodeWithText("Save and use").performScrollTo().performClick()
-        composeRule.onNodeWithText("Use a full https:// address").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Use https://, or http:// for a server on your private network", substring = true)
+            .performScrollTo().assertIsDisplayed()
 
         field.performTextReplacement("https://dns.example/dns-query")
         composeRule.onNodeWithText("Save and use").performScrollTo().performClick()
         awaitProfile { profileRepo.getProfile().dohProvider == DohPresets.CUSTOM_ID }
         assertEquals("https://dns.example/dns-query", profileRepo.getProfile().dohCustomUrl)
+    }
+
+    @Test
+    fun anHttpUrlOnAPrivateNetworkIsSaved_withTheCleartextWarning() {
+        setContent()
+        composeRule.onNodeWithText("Custom DNS-over-HTTPS URL").performScrollTo().performTextInput("http://pihole.lan/dns-query")
+        composeRule.onNodeWithText("Save and use").performScrollTo().performClick()
+        awaitProfile { profileRepo.getProfile().dohProvider == DohPresets.CUSTOM_ID }
+        assertEquals("http://pihole.lan/dns-query", profileRepo.getProfile().dohCustomUrl)
+        composeRule.onNodeWithText("This resolver uses http://, so its lookups are not encrypted.", substring = true)
+            .performScrollTo().assertIsDisplayed()
     }
 
     @Test
