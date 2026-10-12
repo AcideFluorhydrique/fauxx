@@ -115,10 +115,11 @@ class AlarmEngineWakeupTest {
         val stale = scheduledSequence()
         wakeup.schedule(10_000L)
 
-        wakeup.onAlarm(stale)
+        val logged = captureLogs { wakeup.onAlarm(stale) }
 
         assertNull("a stale alarm must not hold the CPU", handover.acquiredFor)
         assertFalse("nor end the current wait", wakeup.await(1_000L))
+        assertTrue(logged.toString(), logged.any { "is stale" in it })
     }
 
     @Test
@@ -128,10 +129,29 @@ class AlarmEngineWakeupTest {
         val seq = scheduledSequence()
         wakeup.cancel()
 
-        wakeup.onAlarm(seq)
+        val logged = captureLogs { wakeup.onAlarm(seq) }
 
         assertNull(handover.acquiredFor)
         assertFalse(wakeup.await(1_000L))
+        // The normal Doze path (#349): the engine woke on its own timer first. It lands in
+        // exported logs, so it must not read like an error.
+        assertTrue(logged.toString(), logged.any { "already awake or stopped" in it })
+        assertTrue(logged.toString(), logged.none { "stale" in it })
+    }
+
+    /** Messages logged through Timber while [block] runs. */
+    private fun captureLogs(block: () -> Unit): List<String> {
+        val logged = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val tree = object : timber.log.Timber.Tree() {
+            override fun log(priority: Int, tag: String?, message: String, t: Throwable?) { logged += message }
+        }
+        timber.log.Timber.plant(tree)
+        try {
+            block()
+        } finally {
+            timber.log.Timber.uproot(tree)
+        }
+        return logged.toList()
     }
 
     @Test
