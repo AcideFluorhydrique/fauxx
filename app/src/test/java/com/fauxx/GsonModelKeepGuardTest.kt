@@ -33,6 +33,7 @@ class GsonModelKeepGuardTest {
         "com.fauxx.data.location.CityCoord" to "the cities asset (name/lat/lng/country)",
         "com.fauxx.targeting.layer1.RuleJson" to "the demographic distance-rules asset",
         "com.fauxx.targeting.layer3.PersonaTemplate" to "the persona templates asset",
+        "com.fauxx.engine.webview.TrackerHostsJson" to "the tracker hosts asset (#341)",
     )
 
     @Test

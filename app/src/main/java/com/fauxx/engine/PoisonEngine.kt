@@ -14,6 +14,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.work.NetworkType
 import com.fauxx.di.IoDispatcher
 import com.fauxx.engine.dns.CustomDns
+import com.fauxx.engine.webview.TrackerWatch
 import com.fauxx.service.ResumeSpec
 import com.fauxx.util.Clock
 import kotlinx.coroutines.CancellationException
@@ -258,6 +259,12 @@ class PoisonEngine @Inject constructor(
      * off (#335). Defaults to a plain delay so engine tests keep running on virtual time.
      */
     private val wakeup: EngineWakeup = EngineWakeup.NONE,
+    /**
+     * Checks whether something on the phone blocks Fauxx's requests to trackers (#341): resets its
+     * verdict on start and probes now and then while the engine runs. Defaults to a no-op so engine
+     * tests need not stand one up.
+     */
+    private val trackerWatch: TrackerWatch = TrackerWatch.NONE,
 ) {
     /**
      * Backstop for an uncaught exception in a direct child of [scope] (issue #197). A
@@ -270,6 +277,9 @@ class PoisonEngine @Inject constructor(
 
     private var scope = CoroutineScope(SupervisorJob() + loopDispatcher + loopExceptionHandler)
     private var engineJob: Job? = null
+
+    /** The #341 tracker checks for the current session; see [startTrackerWatch]. */
+    private var trackerJob: Job? = null
 
     /**
      * The asynchronous teardown launched by [stop] or [destroy]. A new session joins it before
@@ -554,6 +564,7 @@ class PoisonEngine @Inject constructor(
         pauseLastPassAsleep = false
         val runSession = ++session
         registerConstraintReceivers()
+        startTrackerWatch()
         engineJob = scope.launch {
             try {
                 runEngineSession(runSession)
@@ -640,6 +651,8 @@ class PoisonEngine @Inject constructor(
     fun stop() {
         engineJob?.cancel()
         engineJob = null
+        trackerJob?.cancel()
+        trackerJob = null
         session++ // the cancelled loop no longer owns the lock or the alarm
         releaseWake()
         _engineState.value = EngineState.STOPPED
@@ -668,6 +681,8 @@ class PoisonEngine @Inject constructor(
     fun destroy() {
         engineJob?.cancel()
         engineJob = null
+        trackerJob?.cancel()
+        trackerJob = null
         session++
         releaseWake()
         _engineState.value = EngineState.STOPPED
@@ -690,6 +705,20 @@ class PoisonEngine @Inject constructor(
             runCatching { customDns.stop() }
             doomed.cancel()
             Timber.i("PoisonEngine destroyed")
+        }
+    }
+
+    /** The #341 tracker checks run beside the loop, not in it, so a failure there never stops it. */
+    private fun startTrackerWatch() {
+        trackerJob?.cancel()
+        trackerJob = scope.launch {
+            try {
+                trackerWatch.watch(engineState)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                Timber.w(e, "Tracker block check stopped")
+            }
         }
     }
 

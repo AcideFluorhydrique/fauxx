@@ -9,6 +9,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.fauxx.data.crawllist.DomainBlocklist
 import java.util.concurrent.atomic.AtomicInteger
 import io.mockk.every
@@ -328,5 +329,151 @@ class PhantomWebViewClientTest {
             mainFrameRequest("https://blocked.example/", isMainFrame = true),
             netError(-2, "net::ERR_NAME_NOT_RESOLVED"),
         )
+    }
+
+    // --- tracker requests (#341) -----------------------------------------------------------------
+
+    private val trackerHosts = TrackerHosts { setOf("doubleclick.net") }
+
+    private fun trackerClient(
+        counter: TrackerVisitCounter,
+        imagesBlocked: Boolean = true,
+        onMainFrameError: ((String) -> Unit)? = null,
+    ) = PhantomWebViewClient(
+        blocklist,
+        trackerCounter = counter,
+        imagesBlocked = { imagesBlocked },
+        onMainFrameError = onMainFrameError,
+    )
+
+    private fun subresource(url: String, accept: String = "*/*", mainFrame: Boolean = false): WebResourceRequest {
+        val req: WebResourceRequest = mockk()
+        every { req.url } returns Uri.parse(url)
+        every { req.requestHeaders } returns mapOf("Accept" to accept)
+        every { req.isForMainFrame } returns mainFrame
+        return req
+    }
+
+    @Test
+    fun `an allowed request to a tracker host is an attempt, and a DNS failure counts as blocked`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        val client = trackerClient(counter)
+        val req = subresource("https://securepubads.g.doubleclick.net/tag/js/gpt.js")
+
+        assertNull(client.shouldInterceptRequest(view, req))
+        client.onReceivedError(view, req, netError(WebViewClient.ERROR_HOST_LOOKUP, "net::ERR_NAME_NOT_RESOLVED"))
+
+        assertEquals(TrackerVisitCounts(attempted = 1, dnsBlocked = 1), counter.snapshot())
+    }
+
+    @Test
+    fun `a connection failure counts as a connection block`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        val client = trackerClient(counter)
+        val req = subresource("https://doubleclick.net/px")
+
+        client.shouldInterceptRequest(view, req)
+        client.onReceivedError(view, req, netError(WebViewClient.ERROR_CONNECT, "net::ERR_CONNECTION_RESET"))
+
+        assertEquals(TrackerVisitCounts(attempted = 1, connectionBlocked = 1), counter.snapshot())
+    }
+
+    @Test
+    fun `requests Fauxx refuses itself are never attempts and never blocked`() {
+        val counter = TrackerVisitCounter(trackerHosts)
+        val client = trackerClient(counter)
+
+        // The safety blocklist.
+        every { blocklist.isBlocked("bad.doubleclick.net") } returns true
+        val refused = subresource("https://bad.doubleclick.net/x.js")
+        assertNotNull(client.shouldInterceptRequest(view, refused))
+        client.onReceivedError(view, refused, netError(WebViewClient.ERROR_HOST_LOOKUP, "net::ERR_NAME_NOT_RESOLVED"))
+
+        // The MIME gate.
+        every { blocklist.isBlocked("doubleclick.net") } returns false
+        val download = subresource("https://doubleclick.net/file", accept = "application/pdf")
+        assertNotNull(client.shouldInterceptRequest(view, download))
+        client.onReceivedError(view, download, netError(WebViewClient.ERROR_CONNECT, "net::ERR_CONNECTION_RESET"))
+
+        assertEquals(TrackerVisitCounts(), counter.snapshot())
+    }
+
+    @Test
+    fun `images are not attempts while images are off, and are once they are on`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val off = TrackerVisitCounter(trackerHosts)
+        val pixel = subresource("https://doubleclick.net/px.gif", accept = "image/avif,image/webp,*/*")
+        trackerClient(off, imagesBlocked = true).shouldInterceptRequest(view, pixel)
+        assertEquals(0, off.snapshot().attempted)
+
+        val on = TrackerVisitCounter(trackerHosts)
+        trackerClient(on, imagesBlocked = false).shouldInterceptRequest(view, pixel)
+        assertEquals(1, on.snapshot().attempted)
+    }
+
+    @Test
+    fun `plain http tracker requests are not attempts`() {
+        // Mixed content is never allowed, so WebView refuses these itself; that is not a blocker.
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        trackerClient(counter).shouldInterceptRequest(view, subresource("http://doubleclick.net/px.js"))
+        assertEquals(0, counter.snapshot().attempted)
+    }
+
+    @Test
+    fun `non-tracker requests are not attempts`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        val client = trackerClient(counter)
+        val req = subresource("https://cdn.news.example/app.js")
+        client.shouldInterceptRequest(view, req)
+        client.onReceivedError(view, req, netError(WebViewClient.ERROR_HOST_LOOKUP, "net::ERR_NAME_NOT_RESOLVED"))
+        assertEquals(TrackerVisitCounts(), counter.snapshot())
+    }
+
+    @Test
+    fun `an HTTP error from a tracker is not a block`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        val client = trackerClient(counter)
+        val req = subresource("https://doubleclick.net/px")
+        val response: WebResourceResponse = mockk()
+        every { response.statusCode } returns 403
+
+        client.shouldInterceptRequest(view, req)
+        client.onReceivedHttpError(view, req, response)
+
+        assertEquals(TrackerVisitCounts(attempted = 1), counter.snapshot())
+    }
+
+    @Test
+    fun `a main-frame failure marks the visit and is still reported`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        var reported: String? = null
+        val client = trackerClient(counter, onMainFrameError = { reported = it })
+
+        client.onReceivedError(
+            view,
+            subresource("https://news.example/", mainFrame = true),
+            netError(WebViewClient.ERROR_HOST_LOOKUP, "net::ERR_INTERNET_DISCONNECTED"),
+        )
+
+        assertTrue(counter.snapshot().mainFrameFailed)
+        assertNotNull("the #268 main-frame report is unchanged", reported)
+    }
+
+    @Test
+    fun `a sub-resource failure does not mark the visit as failed`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val counter = TrackerVisitCounter(trackerHosts)
+        trackerClient(counter).onReceivedError(
+            view,
+            subresource("https://cdn.news.example/a.js"),
+            netError(WebViewClient.ERROR_CONNECT, "net::ERR_CONNECTION_REFUSED"),
+        )
+        assertFalse(counter.snapshot().mainFrameFailed)
     }
 }

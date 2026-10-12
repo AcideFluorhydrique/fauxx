@@ -343,12 +343,12 @@ To see where the decoy activity is going, the **Targeting screen's category-weig
 
 ### I use DuckDuckGo App Tracking Protection or another tracker-blocking app. Does that affect Fauxx?
 
-Yes. Fauxx keeps running, but much of its effect is lost. The decoy signal travels in the requests a page makes to ad networks and analytics companies, and those are exactly what tracker blockers stop. In one report, DuckDuckGo App Tracking Protection had blocked 1,445 requests from 38 tracking companies made by Fauxx. Fauxx cannot tell you this is happening yet: the pages themselves still load, so the action log shows normal visits.
+Yes. Fauxx keeps running, but much of its effect is lost. The decoy signal travels in the requests a page makes to ad networks and analytics companies, and those are exactly what tracker blockers stop. In one report, DuckDuckGo App Tracking Protection had blocked 1,445 requests from 38 tracking companies made by Fauxx. The pages themselves still load, so the action log shows normal visits. The Dashboard can usually spot DNS-based blockers (Pi-hole, NextDNS, Private DNS, and the DNS filtering in AdGuard, Rethink or Blokada), and shows a hint when DuckDuckGo is installed and a VPN is on. DuckDuckGo App Tracking Protection itself can't be confirmed from inside Fauxx, so exclude Fauxx from it anyway.
 
 Exclude Fauxx from the blocker. Your other apps stay protected, and what gets through is Fauxx's decoy browsing, not your own.
 
 - **DuckDuckGo App Tracking Protection:** in its settings, open the list of protected apps and turn protection off for Fauxx.
-- **Other blocker apps that run as a VPN on your phone** (AdGuard, Blokada, Rethink, TrackerControl and similar): add Fauxx to their excluded or bypassed apps. In Rethink, set Fauxx to bypass DNS and firewall.
+- **Other blocker apps that run as a VPN on your phone** (AdGuard, Blokada, Rethink, TrackerControl and similar): add Fauxx to their excluded or bypassed apps. In Rethink, set Fauxx to Exclude: bypass DNS and firewall is not enough on Android 8 to 10, where the system makes Fauxx's DNS lookups on its behalf and Rethink cannot tell they are Fauxx's.
 - **Blockers that cover your whole network or your phone's DNS** (Pi-hole, NextDNS, Private DNS, a router): these cannot exclude a single app. Use Custom DNS instead, described in the next question.
 
 ### My Pi-hole, NextDNS or VPN blocks tracker domains, so Fauxx can't reach them. What can I do?
@@ -359,7 +359,7 @@ How it works: Android's WebView has no DNS setting of its own, so Fauxx runs a s
 
 Things to know:
 
-- If a VPN or firewall app filters DNS, exempt Fauxx from its DNS filtering (but see below if your resolver lives behind that VPN). In Rethink, set Fauxx to bypass DNS and firewall: its "block when DNS is bypassed" rule would otherwise block the connections Fauxx makes with its own DNS answers.
+- If a VPN or firewall app filters DNS, exempt Fauxx from its DNS filtering (but see below if your resolver lives behind that VPN). In Rethink, choose Exclude for Fauxx. If your resolver is only reachable through Rethink, set Fauxx to bypass DNS and firewall instead: its "block when DNS is bypassed" rule would otherwise block the connections Fauxx makes with its own DNS answers.
 - It covers every site Fauxx's browser loads, including the images, scripts and ads inside a page: the WebView hands each name to the proxy unresolved, and the proxy asks your resolver.
 - By default it falls back. When your resolver is slow or unreachable (three slow or failed lookups in a row, which happens easily over a VPN), Fauxx sends lookups to your device's DNS for at least a minute before trying your resolver again, and says so on the dashboard. **Never fall back to your device's DNS** stops this: lookups then fail, and Fauxx's pages do not load until your resolver answers again. With it on, Fauxx also pauses its browsing whenever its WebView cannot be routed through your resolver, keeps retrying, and says why on the dashboard; on a WebView that cannot route through a proxy at all, Settings keeps the switch reachable so you can turn it off.
 - DNS noise uses your device's DNS on purpose, to fill your network's and ISP's DNS logs, unless you turn on **Also use it for DNS noise** (or never-fall-back, which does the same).

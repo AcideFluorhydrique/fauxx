@@ -74,6 +74,13 @@ interface CustomDns {
      */
     fun browsingBlocked(): Boolean = false
 
+    /**
+     * Whether Fauxx may make its own lookups through the device's resolver. False in strict mode
+     * (#333), where nothing Fauxx does may touch the device's DNS; the blocked-tracker check (#341)
+     * skips its probe then.
+     */
+    fun systemLookupsAllowed(): Boolean = true
+
     companion object {
         /** Custom DNS absent entirely; used by engine tests. */
         val NONE: CustomDns = object : CustomDns {
@@ -301,6 +308,14 @@ class CustomDnsRouter @Inject constructor(
     }
 
     override fun browsingBlocked(): Boolean = browsingBlockedReason() != null
+
+    // The saved settings too, not only the live flag: strict mode is applied asynchronously on
+    // engine start, and a lookup must not slip out in between (#341).
+    override fun systemLookupsAllowed(): Boolean {
+        if (strictActive) return false
+        val p = profileRepo.getProfile()
+        return !(p.dnsStrict && p.dnsMode != DnsMode.SYSTEM)
+    }
 
     override fun credentialsFor(host: String, realm: String): Pair<String, String>? {
         if (host != LoopbackProxy.LOOPBACK) return null

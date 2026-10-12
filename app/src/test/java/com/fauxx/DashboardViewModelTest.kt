@@ -11,7 +11,14 @@ import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.EngineState
 import com.fauxx.engine.PoisonEngine
 import com.fauxx.engine.PoisonProfileRepository
+import com.fauxx.engine.webview.TrackerBlockSource
+import com.fauxx.engine.webview.TrackerBlockKind
+import com.fauxx.engine.webview.TrackerBlockVerdict
+import com.fauxx.engine.webview.VpnState
+import com.fauxx.ui.InstalledApps
 import com.fauxx.engine.webview.WebViewCapabilities
+import com.fauxx.network.dns.DnsHealth
+import com.fauxx.ui.viewmodels.TrackerBlockNotice
 import com.fauxx.support.FakeClock
 import com.fauxx.support.MainDispatcherRule
 import com.fauxx.targeting.TargetingEngine
@@ -112,6 +119,8 @@ class DashboardViewModelTest {
         canHidePackageName: Boolean,
         customDns: com.fauxx.engine.dns.CustomDns = com.fauxx.engine.dns.CustomDns.NONE,
         playInstalled: () -> Boolean = { false },
+        trackerBlocks: TrackerBlockSource = TrackerBlockSource.NONE,
+        installedApps: InstalledApps = InstalledApps.NONE,
     ) = DashboardViewModel(
         context, actionLogDao, profileRepo, poisonEngine, targetingEngine, personaLayer, dataStore,
         mockk<com.fauxx.targeting.layer2.ProfileSnapshotDao>(relaxed = true) {
@@ -124,6 +133,8 @@ class DashboardViewModelTest {
             override fun isPlayStoreInstalled(context: Context): Boolean = playInstalled()
         },
         customDns,
+        trackerBlocks,
+        installedApps,
     )
 
     @Test
@@ -206,5 +217,113 @@ class DashboardViewModelTest {
             assertEquals(expected, withTimeout(5_000) { vm.customDnsNotice.first { it == expected } })
         }
         job.cancel()
+    }
+
+    // --- blocked trackers (#341) -------------------------------------------------------------
+
+    private val noVpn = VpnState.NONE
+    private val vpnWithDns = VpnState(active = true, declaresDns = true)
+    private val vpnWithoutDns = VpnState(active = true, declaresDns = false)
+    private fun blocked(kind: TrackerBlockKind, vpn: VpnState) = TrackerBlockVerdict(true, kind, vpn)
+    private fun clear(vpn: VpnState) = TrackerBlockVerdict(false, null, vpn)
+
+    private fun notice(
+        verdict: TrackerBlockVerdict,
+        health: DnsHealth = DnsHealth.Off,
+        enabled: Boolean = true,
+        ddgInstalled: Boolean = false,
+        ddgDismissed: Boolean = false,
+    ) = DashboardViewModel.trackerNoticeFor(enabled, verdict, health, ddgInstalled, ddgDismissed)
+
+    @Test
+    fun `the tracker line needs protection on`() {
+        assertEquals(null, notice(blocked(TrackerBlockKind.DNS, noVpn), enabled = false))
+        assertEquals(null, notice(clear(vpnWithDns), enabled = false, ddgInstalled = true))
+        assertEquals(null, notice(TrackerBlockVerdict.CLEAR))
+    }
+
+    @Test
+    fun `a blocker app when a VPN with its own DNS, or connection-level blocks under a VPN`() {
+        assertEquals(TrackerBlockNotice.BLOCKER_APP, notice(blocked(TrackerBlockKind.DNS, vpnWithDns)))
+        assertEquals(TrackerBlockNotice.BLOCKER_APP, notice(blocked(TrackerBlockKind.CONNECTION, vpnWithDns)))
+        assertEquals(TrackerBlockNotice.BLOCKER_APP, notice(blocked(TrackerBlockKind.CONNECTION, vpnWithoutDns)))
+        assertEquals(TrackerBlockNotice.BLOCKER_APP, notice(blocked(TrackerBlockKind.CONNECTION, vpnWithoutDns), DnsHealth.Healthy))
+    }
+
+    @Test
+    fun `a VPN without DNS servers leaves DNS-level blocks to the network`() {
+        // DuckDuckGo-style VPN: Fauxx's lookups go to the underlying network's resolvers.
+        assertEquals(TrackerBlockNotice.NETWORK, notice(blocked(TrackerBlockKind.DNS, vpnWithoutDns)))
+    }
+
+    @Test
+    fun `without a VPN the line follows the kind of block and custom DNS`() {
+        assertEquals(TrackerBlockNotice.NETWORK, notice(blocked(TrackerBlockKind.DNS, noVpn)))
+        // Custom DNS cannot help with connection-level blocks, so that line does not suggest it.
+        assertEquals(TrackerBlockNotice.NETWORK_CONNECTION, notice(blocked(TrackerBlockKind.CONNECTION, noVpn)))
+        assertEquals(TrackerBlockNotice.CUSTOM_RESOLVER, notice(blocked(TrackerBlockKind.DNS, noVpn), DnsHealth.Healthy))
+        assertEquals(TrackerBlockNotice.CUSTOM_RESOLVER, notice(blocked(TrackerBlockKind.CONNECTION, noVpn), DnsHealth.Healthy))
+    }
+
+    @Test
+    fun `the confirmed line yields to the custom DNS line`() {
+        for (verdict in listOf(blocked(TrackerBlockKind.DNS, noVpn), blocked(TrackerBlockKind.CONNECTION, vpnWithDns))) {
+            assertEquals(null, notice(verdict, DnsHealth.Degraded(0L, "down")))
+            assertEquals(null, notice(verdict, DnsHealth.Degraded(0L, "down", blocked = true)))
+        }
+    }
+
+    @Test
+    fun `the DuckDuckGo hint needs the app and a VPN, and stays dismissed`() {
+        assertEquals(TrackerBlockNotice.DUCKDUCKGO_HINT, notice(clear(vpnWithoutDns), ddgInstalled = true))
+        assertEquals(TrackerBlockNotice.DUCKDUCKGO_HINT, notice(clear(vpnWithDns), ddgInstalled = true))
+        assertEquals("not installed", null, notice(clear(vpnWithoutDns), ddgInstalled = false))
+        assertEquals("no VPN", null, notice(clear(noVpn), ddgInstalled = true))
+        assertEquals("dismissed", null, notice(clear(vpnWithoutDns), ddgInstalled = true, ddgDismissed = true))
+    }
+
+    @Test
+    fun `a confirmed block outranks the DuckDuckGo hint, dismissed or not`() {
+        assertEquals(
+            TrackerBlockNotice.BLOCKER_APP,
+            notice(blocked(TrackerBlockKind.CONNECTION, vpnWithoutDns), ddgInstalled = true),
+        )
+        assertEquals(
+            TrackerBlockNotice.BLOCKER_APP,
+            notice(blocked(TrackerBlockKind.CONNECTION, vpnWithoutDns), ddgInstalled = true, ddgDismissed = true),
+        )
+    }
+
+    @Test
+    fun `the tracker line follows the verdict while protection is on`() = runBlocking {
+        every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
+        every { profileRepo.getProfile() } returns PoisonProfile(enabled = true)
+        val verdicts = MutableStateFlow(TrackerBlockVerdict.CLEAR)
+        val refreshed = java.util.concurrent.atomic.AtomicInteger(0)
+        val source = object : TrackerBlockSource {
+            override val verdict = verdicts
+            override suspend fun refresh() { refreshed.incrementAndGet() }
+        }
+        val vm = newViewModel(canHidePackageName = true, trackerBlocks = source, installedApps = { it == DashboardViewModel.DUCKDUCKGO_PACKAGE })
+        val job = launch(kotlinx.coroutines.Dispatchers.Unconfined) { vm.trackerBlockNotice.collect {} }
+        try {
+            assertEquals(null, vm.trackerBlockNotice.value)
+            verdicts.value = blocked(TrackerBlockKind.DNS, vpnWithDns)
+            assertEquals(
+                TrackerBlockNotice.BLOCKER_APP,
+                withTimeout(5_000) { vm.trackerBlockNotice.first { it != null } },
+            )
+            // Not blocked any more, but a VPN is on: the hint needs DuckDuckGo seen, which resume checks.
+            verdicts.value = clear(vpnWithoutDns)
+            assertEquals(null, withTimeout(5_000) { vm.trackerBlockNotice.first { it == null } })
+            vm.refreshStoreState()
+            assertEquals(
+                TrackerBlockNotice.DUCKDUCKGO_HINT,
+                withTimeout(5_000) { vm.trackerBlockNotice.first { it == TrackerBlockNotice.DUCKDUCKGO_HINT } },
+            )
+            assertTrue("resume also refreshes the tracker checks", refreshed.get() > 0)
+        } finally {
+            job.cancel()
+        }
     }
 }

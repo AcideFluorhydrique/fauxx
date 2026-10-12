@@ -31,6 +31,7 @@ private val BLOCKED_MIME_TYPES = setOf(
  * - Injects the Global Privacy Control DOM signal ([JSInjector.PAGE_SCRIPT]) when the pool could
  *   not register it as a document-start script
  * - Handles SSL errors conservatively (aborts on error rather than proceeding)
+ * - Counts requests to tracker hosts and their network-level failures (#341, [TrackerVisitCounter])
  */
 class PhantomWebViewClient(
     private val blocklist: DomainBlocklist,
@@ -52,6 +53,13 @@ class PhantomWebViewClient(
     private val onMainFrameError: ((String) -> Unit)? = null,
     // Issue #227: answers the loopback DNS proxy's password challenge, and nothing else's.
     private val proxyAuth: PhantomProxyAuth = PhantomProxyAuth.NONE,
+    // Issue #341: counts this visit's requests to tracker hosts and how many of them fail at the
+    // network level, so the dashboard can say when a tracker blocker is discarding Fauxx's effect.
+    // Null = don't count.
+    private val trackerCounter: TrackerVisitCounter? = null,
+    // Issue #341: whether the pool has images off for this visit. Image requests are then never
+    // fetched, so they must not count as tracker attempts (or, worse, as blocked ones).
+    private val imagesBlocked: () -> Boolean = { true },
 ) : WebViewClient() {
 
     /**
@@ -100,7 +108,21 @@ class PhantomWebViewClient(
 
         // Allowed resource — count it for the "resources loaded" action-log metadata (issue #73).
         resourceCounter?.incrementAndGet()
+        trackerCounter?.let { counter ->
+            if (isTrackerCandidate(request, acceptHeader)) counter.recordAttempt(url, host)
+        }
         return null
+    }
+
+    /**
+     * Issue #341: whether an allowed request can count as a tracker attempt at all. Only https:
+     * the pool never allows mixed content, so an http:// request from an https page is refused by
+     * WebView itself and its error would look like a block. Not images while images are off,
+     * because WebView never fetches them. Everything Fauxx intercepts above never gets here.
+     */
+    private fun isTrackerCandidate(request: WebResourceRequest, acceptHeader: String): Boolean {
+        if (!request.url.scheme.equals("https", ignoreCase = true)) return false
+        return !(acceptHeader.startsWith("image/") && imagesBlocked())
     }
 
     override fun onReceivedError(
@@ -109,7 +131,13 @@ class PhantomWebViewClient(
         error: WebResourceError?
     ) {
         super.onReceivedError(view, request, error)
+        // Issue #341: any request, main frame or not. The counter ignores URLs it never counted
+        // as tracker attempts, so this is a map lookup for everything else.
+        if (request != null && error != null) {
+            trackerCounter?.recordError(request.url.toString(), error.errorCode, error.description)
+        }
         if (request?.isForMainFrame != true) return
+        trackerCounter?.markMainFrameFailed()
         val description = error?.description ?: "unknown error"
         val code = error?.errorCode ?: 0
         Timber.w("WebView load error on ${request.url} (code=$code): $description")

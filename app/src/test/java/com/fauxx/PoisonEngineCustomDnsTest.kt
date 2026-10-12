@@ -13,6 +13,7 @@ import com.fauxx.data.querybank.QueryBankManager
 import com.fauxx.engine.PoisonEngine
 import com.fauxx.engine.PoisonProfileRepository
 import com.fauxx.engine.dns.CustomDns
+import com.fauxx.engine.webview.TrackerWatch
 import com.fauxx.engine.modules.Module
 import com.fauxx.engine.scheduling.ActionDispatcher
 import com.fauxx.engine.scheduling.PoissonScheduler
@@ -23,6 +24,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +90,38 @@ class PoisonEngineCustomDnsTest {
                 listOf("start", "stop", "start"),
                 dns.calls.toList(),
             )
+        } finally {
+            engine.stop()
+        }
+    }
+
+    @Test
+    fun `the tracker check runs with each session and is cancelled on stop (#341)`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val clock = FakeClock(noonEpochMs())
+        val events: MutableList<String> = Collections.synchronizedList(mutableListOf())
+        val watch = TrackerWatch {
+            events += "watch"
+            try {
+                awaitCancellation()
+            } finally {
+                events += "cancelled"
+            }
+        }
+        engine = buildEngine(RecordingDns(), dispatcher, clock, trackerWatch = watch)
+        try {
+            engine.start()
+            advance(clock, 100)
+            assertEquals(listOf("watch"), events.toList())
+
+            engine.stop()
+            advance(clock, 100)
+            assertEquals(listOf("watch", "cancelled"), events.toList())
+
+            // A new session starts a new watch, which resets the verdict.
+            engine.start()
+            advance(clock, 100)
+            assertEquals(listOf("watch", "cancelled", "watch"), events.toList())
         } finally {
             engine.stop()
         }
@@ -162,6 +196,7 @@ class PoisonEngineCustomDnsTest {
         cookieModule: com.fauxx.engine.modules.CookieSaturationModule =
             mockk(relaxed = true) { every { isEnabled() } returns false },
         dnsCalls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger(0),
+        trackerWatch: TrackerWatch = TrackerWatch.NONE,
     ): PoisonEngine {
         // Nothing browses; the DNS-noise module takes a second to stop, the way a module closing
         // WebViews does.
@@ -205,6 +240,7 @@ class PoisonEngineCustomDnsTest {
             clock = clock,
             loopDispatcher = loopDispatcher,
             customDns = dns,
+            trackerWatch = trackerWatch,
         )
     }
 }
