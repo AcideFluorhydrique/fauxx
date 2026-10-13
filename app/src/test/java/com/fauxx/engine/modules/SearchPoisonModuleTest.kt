@@ -62,10 +62,10 @@ class SearchPoisonModuleTest {
         every { getProfile().intensity } returns com.fauxx.data.model.IntensityLevel.MEDIUM
         every { getProfile().mobileIntensity } returns null
     }
-    // #268: modules now consult lastLoadError() to decide success. A relaxed mock would hand back
-    // a non-null string, i.e. "this load failed", so the clean-load default has to be explicit.
+    // #268: modules now consult lastLoadFailure() to decide success. A relaxed mock would hand back
+    // a non-null failure, i.e. "this load failed", so the clean-load default has to be explicit.
     private val webViewPool: PhantomWebViewPool = mockk<PhantomWebViewPool>(relaxed = true).apply {
-        every { lastLoadError(any()) } returns null
+        every { lastLoadFailure(any()) } returns null
     }
     private val blocklist: DomainBlocklist = mockk(relaxed = true)
     private val demographicDao: DemographicProfileDao = mockk(relaxed = true)
@@ -78,6 +78,7 @@ class SearchPoisonModuleTest {
     private fun newModule(
         random: kotlin.random.Random = bankBranchRandom,
         clock: com.fauxx.util.Clock = com.fauxx.support.FakeClock(0L),
+        engineHealth: com.fauxx.data.crawllist.SearchEngineHealth = com.fauxx.data.crawllist.SearchEngineHealth.NONE,
     ) = SearchPoisonModule(
         queryBankManager = queryBankManager,
         grammarGenerator = grammarGenerator,
@@ -94,6 +95,7 @@ class SearchPoisonModuleTest {
         // nextBits()=0 makes SEARCH_ENGINES.random(this) deterministic (first engine = google)
         // and the Accept-Language / dwell draws deterministic.
         random = random,
+        engineHealth = engineHealth,
     )
 
     private val bankBranchRandom = object : kotlin.random.Random() {
@@ -452,5 +454,136 @@ class SearchPoisonModuleTest {
         coVerify(exactly = 1) { webViewPool.initialize() }
         verify(exactly = 0) { webViewPool.setDevice(any()) }
         verify(exactly = 0) { webViewPool.clearDevice() }
+    }
+
+    // ---- #353: search engines backing off after a bot check ----
+
+    /** An in-memory [com.fauxx.data.crawllist.SearchEngineHealth] that records what it is told. */
+    private class FakeEngineHealth(val held: MutableSet<String> = mutableSetOf()) : com.fauxx.data.crawllist.SearchEngineHealth {
+        val botChecks = mutableListOf<String>()
+        val successes = mutableListOf<String>()
+        override fun isEngineHeldBack(engineId: String) = engineId in held
+        override fun recordEngineBotCheck(engineId: String) { botChecks += engineId; held += engineId }
+        override fun recordEngineSuccess(engineId: String) { successes += engineId; held -= engineId }
+    }
+
+    @Test
+    fun `a held-back engine is skipped and the search goes to another enabled engine`() = runTest(testDispatcher) {
+        safeSession("best mechanical keyboards 2026")
+        val (urls, _) = captureLoads()
+        // bankBranchRandom picks the first selectable engine: google, unless it is held back.
+        val health = FakeEngineHealth(mutableSetOf("google"))
+
+        val result = newModule(engineHealth = health).onAction(CategoryPool.GAMING)
+
+        assertTrue("google is held back; was: ${urls.first()}", urls.first().contains("bing.com/search"))
+        assertTrue(result.detail.endsWith("via bing"))
+        assertEquals("a clean search clears that engine's record", listOf("bing"), health.successes)
+    }
+
+    @Test
+    fun `when every enabled engine is held back the module is held back and never searches`() = runTest(testDispatcher) {
+        safeSession("best mechanical keyboards 2026")
+        val health = FakeEngineHealth(SEARCH_ENGINE_IDS.toMutableSet())
+        val module = newModule(engineHealth = health)
+
+        assertTrue("the engine loop dispatches other modules instead", module.isHeldBack())
+        val result = module.onAction(CategoryPool.GAMING)
+        assertFalse(result.success)
+        assertFalse("no query text in the skip line", result.detail.contains("keyboards"))
+        coVerify(exactly = 0) { webViewPool.acquire() }
+
+        health.held -= "yahoo"
+        assertFalse(module.isHeldBack())
+    }
+
+    @Test
+    fun `held-back engines are only those the user allows, and the settings are untouched`() {
+        every { profileRepo.getProfile().excludedSearchEngines } returns setOf("bing", "yahoo", "yandex")
+        val health = FakeEngineHealth(mutableSetOf("google", "duckduckgo"))
+        assertTrue(newModule(engineHealth = health).isHeldBack())
+        health.held -= "duckduckgo"
+        assertFalse(newModule(engineHealth = health).isHeldBack())
+        coVerify(exactly = 0) { profileRepo.updateProfile(any()) }
+        coVerify(exactly = 0) { profileRepo.saveProfile(any()) }
+    }
+
+    @Test
+    fun `a 429 on the goal SERP holds the engine back and ends the session`() = runTest(testDispatcher) {
+        safeSession("best mechanical keyboards 2026")
+        val (urls, _) = captureLoads()
+        every { webViewPool.lastLoadFailure(any()) } returns
+            com.fauxx.engine.webview.LoadFailureClassifier.fromHttp(429)
+        val health = FakeEngineHealth()
+
+        val result = newModule(random = maxRandom, engineHealth = health).onAction(CategoryPool.GAMING)
+
+        assertFalse(result.success)
+        assertEquals("one strike for the engine searched", 1, health.botChecks.size)
+        assertEquals("no refinement after the bot check", 1, urls.size)
+        assertTrue(result.metadata.orEmpty().contains("blocked by bot check, http(429)"))
+    }
+
+    @Test
+    fun `a Google sorry page reached with a 200 is still a bot check`() = runTest(testDispatcher) {
+        // The status can be 200 after a 302; the final URL is what gives it away.
+        safeSession("best mechanical keyboards 2026")
+        captureLoads()
+        every { webView.url } returns "https://www.google.com/sorry/index?continue=https://www.google.com/search&q=x"
+        val health = FakeEngineHealth()
+
+        val result = newModule(engineHealth = health).onAction(CategoryPool.GAMING)
+
+        assertFalse(result.success)
+        assertEquals(listOf("google"), health.botChecks)
+    }
+
+    @Test
+    fun `a local failure never holds an engine back`() = runTest(testDispatcher) {
+        // Yandex filtered by a DNS blocker fails with NXDOMAIN; offline is ERR_INTERNET_DISCONNECTED.
+        safeSession("best mechanical keyboards 2026")
+        captureLoads()
+        val health = FakeEngineHealth()
+        for (failure in listOf(
+            com.fauxx.engine.webview.LoadFailureClassifier.fromNetwork(-2, "net::ERR_NAME_NOT_RESOLVED"),
+            com.fauxx.engine.webview.LoadFailureClassifier.fromNetwork(-2, "net::ERR_INTERNET_DISCONNECTED"),
+            com.fauxx.engine.webview.LoadFailureClassifier.fromNetwork(-6, "net::ERR_TUNNEL_CONNECTION_FAILED"),
+        )) {
+            every { webViewPool.lastLoadFailure(any()) } returns failure
+            assertFalse(newModule(random = maxRandom, engineHealth = health).onAction(CategoryPool.GAMING).success)
+        }
+        assertTrue(health.botChecks.isEmpty())
+        assertTrue(health.held.isEmpty())
+    }
+
+    @Test
+    fun `challenge pages are recognized by their URL`() {
+        val challenges = listOf(
+            "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3Dx&q=EgQ",
+            "https://www.google.co.uk/sorry/index?continue=x",
+            "https://google.fr/sorry/",
+            "https://yandex.com/showcaptcha?cc=1&retpath=x",
+            "https://yandex.ru/checkcaptcha?key=x",
+            "https://www.bing.com/turing/captcha/challenge?q=x",
+        )
+        for (url in challenges) assertTrue(url, SearchChallenge.isChallengeUrl(url))
+        val pages = listOf(
+            "https://www.google.com/search?q=sorry",
+            "https://www.google.com/",
+            "https://sorry.example.com/sorry",
+            "https://www.bing.com/search?q=captcha",
+            "https://yandex.com/search/?text=showcaptcha",
+            "about:blank",
+            "",
+            null,
+        )
+        for (url in pages) assertFalse("$url", SearchChallenge.isChallengeUrl(url))
+    }
+
+    @Test
+    fun `selectable engines are the allowed ones not held back, with no fallback`() {
+        assertEquals(listOf("bing", "yandex"), selectableSearchEngines(listOf("google", "bing", "yandex")) { it == "google" })
+        assertEquals(emptyList<String>(), selectableSearchEngines(listOf("google")) { true })
+        assertEquals("a broken health check never removes an engine", listOf("google"), selectableSearchEngines(listOf("google")) { error("x") })
     }
 }

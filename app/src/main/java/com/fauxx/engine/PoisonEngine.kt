@@ -952,7 +952,8 @@ class PoisonEngine @Inject constructor(
             val skipped = if (browsingBlocked) browsingModules else emptyList()
             val availableModules = allModules.filter { module ->
                 val name = module::class.simpleName ?: return@filter false
-                module !in skipped && module.isEnabled() && (circuitBreakerUntil[name] ?: 0L) <= now
+                module !in skipped && module.isEnabled() && !module.isHeldBack() &&
+                    (circuitBreakerUntil[name] ?: 0L) <= now
             }
             if (availableModules.isEmpty()) {
                 // When the first enabled module may retry. A permanent break (Long.MAX_VALUE, a

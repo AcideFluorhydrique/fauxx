@@ -3,6 +3,7 @@ package com.fauxx.engine.modules
 import android.content.Context
 import timber.log.Timber
 import com.fauxx.data.db.ActionLogEntity
+import com.fauxx.data.db.LogMetadata
 import com.fauxx.data.model.ActionType
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.PoisonProfileRepository
@@ -271,13 +272,15 @@ class AppSignalModule @Inject constructor(
             try {
                 withContext(Dispatchers.Main) { webView.loadUrl(url, SYNTHETIC_WEBVIEW_HEADERS) }
                 delay(dwellMs)
-                // #73: read page metadata on Main, before release() wipes the document.
-                metadata = withContext(Dispatchers.Main) { webViewPool.captureMetadata(webView, url) }
                 // #268: an error page still "finishes" loading. A main-frame failure (DNS blocked,
                 // refused, HTTP 4xx/5xx) is not a successful visit, so don't log it as one.
-                val loadError = webViewPool.lastLoadError(webView)
-                if (loadError != null) Timber.d("App signal load failed [$loadError]")
-                loadError == null
+                val failure = webViewPool.lastLoadFailure(webView)
+                // #73: read page metadata on Main, before release() wipes the document.
+                metadata = withContext(Dispatchers.Main) {
+                    webViewPool.captureMetadata(webView, url, LogMetadata.LOAD_FAILURE to failure?.describe())
+                }
+                if (failure != null) Timber.d("App signal load failed [${failure.describe()}]")
+                failure == null
             } catch (e: Exception) {
                 Timber.w("App signal load failed: ${e.message}")
                 false

@@ -10,6 +10,9 @@ import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.PoisonProfileRepository
 import com.fauxx.engine.modules.AdPollutionModule
 import com.fauxx.engine.modules.CookieSaturationModule
+import com.fauxx.engine.webview.CrawlOutcomeSink
+import com.fauxx.engine.webview.LoadFailureClassifier
+import com.fauxx.engine.webview.PageLoadFailure
 import com.fauxx.engine.webview.PhantomWebViewPool
 import com.fauxx.support.MainDispatcherRule
 import io.mockk.coEvery
@@ -41,10 +44,10 @@ class ModuleSilentFailureTest {
     val mainDispatcherRule = MainDispatcherRule(testDispatcher)
 
     private val webView: WebView = mockk(relaxed = true)
-    // #268: modules now consult lastLoadError() to decide success. A relaxed mock would hand back
-    // a non-null string, i.e. "this load failed", so the clean-load default has to be explicit.
+    // #268: modules now consult lastLoadFailure() to decide success. A relaxed mock would hand back
+    // a non-null failure, i.e. "this load failed", so the clean-load default has to be explicit.
     private val webViewPool: PhantomWebViewPool = mockk<PhantomWebViewPool>(relaxed = true).apply {
-        every { lastLoadError(any()) } returns null
+        every { lastLoadFailure(any()) } returns null
     }
     private val crawlListManager: CrawlListManager = mockk(relaxed = true)
     private val profileRepo: PoisonProfileRepository = mockk(relaxed = true)
@@ -114,12 +117,78 @@ class ModuleSilentFailureTest {
             // logs a Success line for a page that never loaded.
             every { profileRepo.getProfile() } returns PoisonProfile(cookieSaturationEnabled = true)
             every { crawlListManager.nextUrlOrWait(any()) } returns testEntry
-            every { webViewPool.lastLoadError(any()) } returns "net(-2): net::ERR_NAME_NOT_RESOLVED"
+            val failure = LoadFailureClassifier.fromNetwork(-2, "net::ERR_NAME_NOT_RESOLVED")
+            every { webViewPool.lastLoadFailure(any()) } returns failure
+            val outcomes = mutableListOf<Pair<CrawlEntry, PageLoadFailure?>>()
+            val sink = CrawlOutcomeSink { entry, f -> outcomes += entry to f }
 
-            val module = CookieSaturationModule(crawlListManager, webViewPool, profileRepo)
+            val module = CookieSaturationModule(crawlListManager, webViewPool, profileRepo, crawlOutcomes = sink)
             val result = module.onAction(CategoryPool.GAMING)
 
             assertFalse("A main-frame load error must be reported as a failed action", result.success)
+            // #353: the failure also goes to the crawl-health memory, kind and all.
+            assertEquals(listOf(testEntry.entry to failure), outcomes)
+        }
+
+    @Test
+    fun `CookieSaturationModule reports a clean visit to the crawl-health memory`() =
+        runTest(testDispatcher) {
+            every { profileRepo.getProfile() } returns PoisonProfile(cookieSaturationEnabled = true)
+            every { crawlListManager.nextUrlOrWait(any()) } returns testEntry
+            val outcomes = mutableListOf<Pair<CrawlEntry, PageLoadFailure?>>()
+
+            CookieSaturationModule(
+                crawlListManager, webViewPool, profileRepo,
+                crawlOutcomes = { entry, f -> outcomes += entry to f },
+            ).onAction(CategoryPool.GAMING)
+
+            assertEquals(listOf(testEntry.entry to null), outcomes)
+        }
+
+    @Test
+    fun `a visit that never happened is not reported to the crawl-health memory`() =
+        runTest(testDispatcher) {
+            // A WebView that throws, or a pool that cannot hand one out, says nothing about the page.
+            every { profileRepo.getProfile() } returns PoisonProfile(cookieSaturationEnabled = true, adPollutionEnabled = true)
+            every { crawlListManager.nextUrlOrWait(any()) } returns testEntry
+            every { webView.loadUrl(any<String>(), any()) } throws RuntimeException("WebView crashed")
+            val outcomes = mutableListOf<Pair<CrawlEntry, PageLoadFailure?>>()
+            val sink = CrawlOutcomeSink { entry, f -> outcomes += entry to f }
+            val pageVisitRandom = object : Random() {
+                override fun nextBits(bitCount: Int): Int = 0
+                override fun nextFloat(): Float = 0.5f
+                override fun nextLong(from: Long, until: Long): Long = from
+            }
+
+            CookieSaturationModule(crawlListManager, webViewPool, profileRepo, crawlOutcomes = sink).onAction(CategoryPool.GAMING)
+            AdPollutionModule(crawlListManager, webViewPool, profileRepo, pageVisitRandom, sink).onAction(CategoryPool.GAMING)
+
+            assertTrue(outcomes.isEmpty())
+        }
+
+    @Test
+    fun `AdPollutionModule reports crawl pages but not the ad dashboards`() =
+        runTest(testDispatcher) {
+            every { profileRepo.getProfile() } returns PoisonProfile(adPollutionEnabled = true)
+            every { crawlListManager.nextUrlOrWait(any()) } returns testEntry
+            val outcomes = mutableListOf<Pair<CrawlEntry, PageLoadFailure?>>()
+            val sink = CrawlOutcomeSink { entry, f -> outcomes += entry to f }
+            val dashboardRandom = object : Random() {
+                override fun nextBits(bitCount: Int): Int = 0
+                override fun nextFloat(): Float = 0.05f
+                override fun nextLong(from: Long, until: Long): Long = from
+            }
+            val pageVisitRandom = object : Random() {
+                override fun nextBits(bitCount: Int): Int = 0
+                override fun nextFloat(): Float = 0.5f
+                override fun nextLong(from: Long, until: Long): Long = from
+            }
+
+            AdPollutionModule(crawlListManager, webViewPool, profileRepo, dashboardRandom, sink).onAction(CategoryPool.GAMING)
+            assertTrue("a dashboard visit is not a crawl-list pick", outcomes.isEmpty())
+
+            AdPollutionModule(crawlListManager, webViewPool, profileRepo, pageVisitRandom, sink).onAction(CategoryPool.GAMING)
+            assertEquals(listOf(testEntry.entry to null), outcomes)
         }
 
     @Test

@@ -119,6 +119,7 @@ class SettingsViewModel @Inject constructor(
     private val localeManager: LocaleManager,
     private val markovGenerator: MarkovQueryGenerator,
     private val circadianObserver: CircadianObserver,
+    private val crawlHealth: com.fauxx.data.crawllist.UrlHealthTracker,
     private val webViewCapabilities: WebViewCapabilities = WebViewCapabilities.SYSTEM,
 ) : ViewModel() {
 
@@ -320,6 +321,8 @@ class SettingsViewModel @Inject constructor(
             // Wipe the learned daily-rhythm histogram, in memory and on disk, so the
             // behavioral profile doesn't survive a "delete all data" (E10 #177).
             circadianObserver.clear()
+            // Forget which crawl pages kept failing (#353): a record of visits, however impersonal.
+            crawlHealth.clear()
             // Clear the recoverable trail too: the encrypted log files (up to 48h of
             // query/persona text) and the Markov model trained from custom interests.
             // Without these, "delete all data" leaves a recoverable activity trail.

@@ -34,6 +34,8 @@ private const val CLEANUP_THRESHOLD = 500
  * - Tracks last-visit timestamp per domain to enforce the 5-second per-domain rate limit.
  * - Filters out blocked domains before returning URLs.
  * - Supports category-weighted URL selection.
+ * - Skips URLs and domains that keep failing ([UrlHealthGate], #353), falling back to other
+ *   categories and then to ignoring that memory rather than stalling.
  *
  * The crawl list is locale-keyed because data brokers fingerprint domain mix as a
  * region indicator: a Spanish-mode profile should hit elmundo.es and mercadolibre,
@@ -47,6 +49,7 @@ class CrawlListManager @Inject constructor(
     private val localeManager: LocaleManager,
     private val clock: Clock = SystemClockImpl(),
     private val random: Random = Random.Default,
+    private val urlHealth: UrlHealthGate = UrlHealthGate.NONE,
 ) {
     private val urlsByLocale = ConcurrentHashMap<SupportedLocale, List<CrawlEntry>>()
     private val lastVisitByDomain = mutableMapOf<String, Long>()
@@ -64,19 +67,8 @@ class CrawlListManager @Inject constructor(
     fun nextUrl(category: CategoryPool? = null): CrawlEntry? {
         val now = clock.currentTimeMillis()
         cleanupStaleEntries(now)
-        val urls = currentUrls()
-        val candidates = if (category != null) {
-            urls.filter { it.category == category }
-                .ifEmpty { urls } // Fall back to any category
-        } else {
-            urls
-        }
-
-        return candidates
-            .filter { entry ->
-                !blocklist.isUrlBlocked(entry.url) &&
-                isEligible(entry.domain, now)
-            }
+        return candidatePool(category)
+            .filter { entry -> isEligible(entry.domain, now) }
             .randomOrNull(random)
             ?.also { entry ->
                 lastVisitByDomain[entry.domain] = now
@@ -98,15 +90,7 @@ class CrawlListManager @Inject constructor(
 
         // All candidates are rate-limited — find the one with the shortest remaining wait
         val now = clock.currentTimeMillis()
-        val urls = currentUrls()
-        val candidates = if (category != null) {
-            urls.filter { it.category == category }
-                .ifEmpty { urls }
-        } else {
-            urls
-        }
-
-        val eligible = candidates.filter { !blocklist.isUrlBlocked(it.url) }
+        val eligible = candidatePool(category)
         if (eligible.isEmpty()) return null
 
         // Find the entry whose domain's rate-limit expires soonest
@@ -120,6 +104,32 @@ class CrawlListManager @Inject constructor(
         val waitMs = maxOf(0L, (lastVisit + MIN_DOMAIN_INTERVAL_MS) - now)
         return PendingCrawlEntry(best, waitMs)
     }
+
+    /**
+     * The URLs a pick may choose from, before the rate limit: [category]'s entries (or every
+     * entry), minus blocklisted ones and minus those [urlHealth] holds back (#353).
+     *
+     * Holding back must never stall the crawler. If every healthy-looking entry of [category] is
+     * held back, the pick falls back to the healthy entries of any category, and if the whole
+     * corpus is held back, the memory is ignored and the plain list is used.
+     */
+    private fun candidatePool(category: CategoryPool?): List<CrawlEntry> {
+        val urls = currentUrls()
+        val inCategory = if (category != null) {
+            urls.filter { it.category == category }.ifEmpty { urls } // Fall back to any category
+        } else {
+            urls
+        }
+        val allowed = inCategory.filter { !blocklist.isUrlBlocked(it.url) }
+        allowed.filter(::isHealthy).takeIf { it.isNotEmpty() }?.let { return it }
+        if (inCategory !== urls) {
+            urls.filter { !blocklist.isUrlBlocked(it.url) && isHealthy(it) }.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        return allowed
+    }
+
+    private fun isHealthy(entry: CrawlEntry): Boolean =
+        runCatching { !urlHealth.isSuppressed(entry.url, entry.domain) }.getOrDefault(true)
 
     /** Mark a domain as visited at [timestamp]. */
     fun markVisited(domain: String, timestamp: Long = clock.currentTimeMillis()) {

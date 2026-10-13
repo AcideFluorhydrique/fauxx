@@ -1,6 +1,7 @@
 package com.fauxx.engine.webview
 
 import android.graphics.Bitmap
+import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -46,11 +47,13 @@ class PhantomWebViewClient(
     // False when the pool registered JSInjector.PAGE_SCRIPT as a document-start script, which runs
     // earlier and in every frame. True is the fallback for WebViews without DOCUMENT_START_SCRIPT.
     private val injectOnPageStarted: Boolean = true,
-    // Issue #268: invoked with a short description when the MAIN FRAME fails to load (DNS failure,
-    // connection refused, HTTP 4xx/5xx). Without this the failure was logged and dropped, and the
-    // module still recorded the action as a success — a DNS-blocked load (Pi-hole and friends,
-    // which most Fauxx users run) produced an error page but a "Success" action-log line.
-    private val onMainFrameError: ((String) -> Unit)? = null,
+    // Issue #268: told when the MAIN FRAME fails to load (DNS failure, connection refused, HTTP
+    // 4xx/5xx). Without this the failure was logged and dropped, and the module still recorded the
+    // action as a success: a DNS-blocked load (Pi-hole and friends, which most Fauxx users run)
+    // produced an error page but a "Success" action-log line. Issue #353: also told when each
+    // main-frame navigation starts, so a later navigation that loads (a passed bot challenge)
+    // replaces an earlier failure instead of being shadowed by it.
+    private val mainFrame: MainFrameLoadTracker? = null,
     // Issue #227: answers the loopback DNS proxy's password challenge, and nothing else's.
     private val proxyAuth: PhantomProxyAuth = PhantomProxyAuth.NONE,
     // Issue #341: counts this visit's requests to tracker hosts and how many of them fail at the
@@ -92,6 +95,10 @@ class PhantomWebViewClient(
         request: WebResourceRequest
     ): WebResourceResponse? {
         val url = request.url.toString()
+        // #353: every http(s) main-frame navigation passes through here exactly once (WebView
+        // skips interception only for redirects, content:// and android_asset URLs), so this is
+        // where a new navigation, with an outcome not known yet, begins.
+        mainFrame?.let { if (request.isForMainFrame && request.url.isWebScheme()) it.onNavigationStart() }
         val host = request.url.host ?: return null
 
         // Block domains on the blocklist
@@ -138,10 +145,10 @@ class PhantomWebViewClient(
         }
         if (request?.isForMainFrame != true) return
         trackerCounter?.markMainFrameFailed()
-        val description = error?.description ?: "unknown error"
+        val description = error?.description?.toString()
         val code = error?.errorCode ?: 0
         Timber.w("WebView load error on ${request.url} (code=$code): $description")
-        onMainFrameError?.invoke("net($code): $description")
+        mainFrame?.onFailure(LoadFailureClassifier.fromNetwork(code, description))
     }
 
     /**
@@ -160,7 +167,7 @@ class PhantomWebViewClient(
         val status = errorResponse?.statusCode ?: return
         if (status < 400) return
         Timber.w("WebView HTTP error on ${request.url}: $status")
-        onMainFrameError?.invoke("http($status)")
+        mainFrame?.onFailure(LoadFailureClassifier.fromHttp(status, runCatching { errorResponse.responseHeaders }.getOrNull()))
     }
 
     override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -195,11 +202,24 @@ class PhantomWebViewClient(
     }
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-        val host = request.url.host ?: return true
-        if (blocklist.isBlocked(host)) {
-            Timber.d("Blocked navigation to: $host")
-            return true
+        // #353: only http(s) is ever loaded. A page that sends a Chrome-on-Android visitor to its
+        // app (intent://, market://, a custom scheme with a host) used to get through here, and
+        // WebView then failed the main frame with ERR_UNKNOWN_URL_SCHEME, failing a visit whose
+        // page had loaded fine. Refusing the navigation leaves the page in place, like Chrome
+        // does when the app is not installed.
+        val refuse = !request.url.isWebScheme() || request.url.host.let { it == null || blocklist.isBlocked(it) }
+        if (!refuse) return false
+        Timber.d("Refused navigation (scheme=${request.url.scheme})")
+        // A refused SERVER redirect of the main frame means the page itself never loads. WebView
+        // reports nothing for it (ERR_ABORTED is never passed on), so say so here.
+        mainFrame?.let { tracker ->
+            if (request.isForMainFrame && runCatching { request.isRedirect }.getOrDefault(false)) {
+                tracker.onFailure(LoadFailureClassifier.refusedRedirect())
+            }
         }
-        return false
+        return true
     }
+
+    private fun Uri.isWebScheme(): Boolean =
+        scheme.equals("https", ignoreCase = true) || scheme.equals("http", ignoreCase = true)
 }

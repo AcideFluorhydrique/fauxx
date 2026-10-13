@@ -139,11 +139,11 @@ class PhantomWebViewPool @Inject constructor(
     private val resourceCounters = ConcurrentHashMap<String, AtomicInteger>()
 
     /**
-     * Issue #268: the first main-frame load error seen on each pooled WebView since [acquire],
-     * or null if the load succeeded. Mirrors [resourceCounters] — per-instance state the pool owns,
-     * reset on acquire, read by modules via [lastLoadError] to decide the action's success.
+     * Issue #268, revised by #353: the outcome of the latest main-frame navigation on each pooled
+     * WebView since [acquire]. Mirrors [resourceCounters]: per-instance state the pool owns, reset
+     * on acquire, read by modules via [lastLoadFailure] to decide the action's success.
      */
-    private val loadErrors = ConcurrentHashMap<String, AtomicReference<String?>>()
+    private val loadOutcomes = ConcurrentHashMap<String, MainFrameLoadTracker>()
 
     /**
      * Issue #341: per-WebView tracker requests and failures since [acquire]. Mirrors
@@ -274,7 +274,7 @@ class PhantomWebViewPool @Inject constructor(
         // `initialized` is written on the main thread, so test it there rather than from the
         // caller's dispatcher. Reading it here raced a queued destroy() and could run a rebuild
         // and an initialize() against the same empty pool, leaving four WebViews with duplicate
-        // tags; the later twin then overwrote resourceCounters/loadErrors while acquire() kept
+        // tags; the later twin then overwrote resourceCounters/loadOutcomes while acquire() kept
         // handing out the earlier one, silently reverting issues #268 and #73 for the session.
         val needsRebuild = withContext(Dispatchers.Main) {
             if (initialized) {
@@ -395,7 +395,7 @@ class PhantomWebViewPool @Inject constructor(
      * `NoSuchElementException` out of `pool.first {}` until the foreground service restarted.
      *
      * Tags are assigned from the free set rather than from the loop index so a partial pool does
-     * not end up with duplicates, which would silently detach `resourceCounters` and `loadErrors`
+     * not end up with duplicates, which would silently detach `resourceCounters` and `loadOutcomes`
      * from the instance [acquire] hands out (issues #268 and #73).
      */
     private fun ensurePool() {
@@ -450,7 +450,7 @@ class PhantomWebViewPool @Inject constructor(
                     if (pool.size < POOL_SIZE) ensurePool()
                     val wv = pool.first { acquired.putIfAbsent(it.tag as String, true) == null }
                     resourceCounters[wv.tag as String]?.set(0)
-                    loadErrors[wv.tag as String]?.set(null)
+                    loadOutcomes[wv.tag as String]?.reset()
                     trackerCounters[wv.tag as String]?.reset()
                     applyIdentity(wv)
                     applyImagePolicy(wv)
@@ -475,25 +475,28 @@ class PhantomWebViewPool @Inject constructor(
      * failed read simply omits that field so the action's success is unaffected.
      */
     /**
-     * The first main-frame load error on [webView] since [acquire], or null if the main frame
-     * loaded cleanly (issue #268).
+     * How the latest main-frame navigation on [webView] since [acquire] failed, or null if it
+     * loaded (issue #268, revised by #353; see [MainFrameLoadTracker] for the rules).
      *
-     * Modules use this to decide whether an action actually succeeded. Before this existed, a load
-     * that failed at the network layer still counted as a success: the module fired `loadUrl`,
-     * dwelled, and returned true regardless, so users running a DNS blocker saw "Success" lines for
-     * pages that never loaded. Safe to call from any thread.
+     * Modules use this to decide whether an action actually succeeded. Before #268, a load that
+     * failed at the network layer still counted as a success: the module fired `loadUrl`, dwelled,
+     * and returned true regardless, so users running a DNS blocker saw "Success" lines for pages
+     * that never loaded. Safe to call from any thread.
      */
-    fun lastLoadError(webView: WebView): String? =
-        runCatching { loadErrors[webView.tag as? String]?.get() }.getOrNull()
+    fun lastLoadFailure(webView: WebView): PageLoadFailure? =
+        runCatching { loadOutcomes[webView.tag as? String]?.current() }.getOrNull()
+
+    /** [lastLoadFailure] as a short description for logs, or null if the page loaded. */
+    fun lastLoadError(webView: WebView): String? = lastLoadFailure(webView)?.describe()
 
     /**
-     * Reset the recorded load error for [webView] (issue #268). Callers that perform SEVERAL
+     * Reset the recorded load outcome for [webView] (issue #268). Callers that perform SEVERAL
      * navigations on one acquired instance (SearchPoisonModule loads a goal SERP then a chain of
-     * refinements) must call this before each one, otherwise the first failure would mark every
-     * later navigation in the session as failed too.
+     * refinements) must call this before each one, otherwise a failure reported late by the
+     * previous page could be charged to the next load.
      */
     fun clearLoadError(webView: WebView) {
-        runCatching { loadErrors[webView.tag as? String]?.set(null) }
+        runCatching { loadOutcomes[webView.tag as? String]?.reset() }
         // #341: likewise, one failed navigation must not discard the session's tracker counts.
         runCatching { trackerCounters[webView.tag as? String]?.clearMainFrameFailed() }
     }
@@ -670,8 +673,8 @@ class PhantomWebViewPool @Inject constructor(
 
         val resourceCounter = AtomicInteger(0)
         resourceCounters[tag] = resourceCounter
-        val loadError = AtomicReference<String?>(null)
-        loadErrors[tag] = loadError
+        val loadOutcome = MainFrameLoadTracker()
+        loadOutcomes[tag] = loadOutcome
         val trackerCounter = TrackerVisitCounter(trackerHosts)
         trackerCounters[tag] = trackerCounter
         val imagesBlocked = AtomicBoolean(true)
@@ -682,9 +685,8 @@ class PhantomWebViewPool @Inject constructor(
             onRenderGone = ::handleRendererGone,
             injectOnPageStarted = !documentStartInjected,
             proxyAuth = proxyAuth,
-            // Issue #268: record only the FIRST main-frame error of a load. A failed navigation can
-            // emit several callbacks, and the first one is the one that describes what went wrong.
-            onMainFrameError = { loadError.compareAndSet(null, it) },
+            // Issue #268/#353: the outcome of the latest main-frame navigation.
+            mainFrame = loadOutcome,
             trackerCounter = trackerCounter,
             imagesBlocked = imagesBlocked::get,
         )

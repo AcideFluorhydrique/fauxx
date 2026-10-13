@@ -252,12 +252,15 @@ class PhantomWebViewClientTest {
         return err
     }
 
+    /** A tracker that has seen this visit's first navigation start, as after a real loadUrl. */
+    private fun startedTracker() = MainFrameLoadTracker().apply { onNavigationStart() }
+
     @Test
     fun `a main-frame network error is reported`() {
         // The #268 case: a DNS-blocked host (Pi-hole and friends) fails at the network layer, the
         // WebView shows an error page, and the module used to log the action as a success anyway.
-        var reported: String? = null
-        val client = PhantomWebViewClient(blocklist, onMainFrameError = { reported = it })
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
 
         client.onReceivedError(
             view,
@@ -265,19 +268,21 @@ class PhantomWebViewClientTest {
             netError(-2, "net::ERR_NAME_NOT_RESOLVED"),
         )
 
+        val reported = tracker.current()
         assertNotNull("a main-frame failure must be reported", reported)
         assertTrue(
             "the report should carry the underlying cause, got: $reported",
-            reported!!.contains("ERR_NAME_NOT_RESOLVED"),
+            reported!!.code.contains("ERR_NAME_NOT_RESOLVED"),
         )
+        assertEquals(LoadFailureKind.DEAD, reported.kind)
     }
 
     @Test
     fun `a sub-resource network error is ignored`() {
         // Sub-resource failures are routine on real pages (a blocked tracker is in fact the
         // desired outcome) and say nothing about whether the visit itself worked.
-        var reported: String? = null
-        val client = PhantomWebViewClient(blocklist, onMainFrameError = { reported = it })
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
 
         client.onReceivedError(
             view,
@@ -285,15 +290,16 @@ class PhantomWebViewClientTest {
             netError(-2, "net::ERR_NAME_NOT_RESOLVED"),
         )
 
-        assertNull("a sub-resource failure must not fail the action", reported)
+        assertNull("a sub-resource failure must not fail the action", tracker.current())
     }
 
     @Test
     fun `a main-frame HTTP error status is reported`() {
-        var reported: String? = null
-        val client = PhantomWebViewClient(blocklist, onMainFrameError = { reported = it })
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
         val response: WebResourceResponse = mockk()
         every { response.statusCode } returns 503
+        every { response.responseHeaders } returns emptyMap()
 
         client.onReceivedHttpError(
             view,
@@ -301,14 +307,16 @@ class PhantomWebViewClientTest {
             response,
         )
 
+        val reported = tracker.current()
         assertNotNull("a main-frame 5xx must be reported", reported)
-        assertTrue("the report should name the status, got: $reported", reported!!.contains("503"))
+        assertTrue("the report should name the status, got: $reported", reported!!.code.contains("503"))
+        assertEquals(LoadFailureKind.TRANSIENT, reported.kind)
     }
 
     @Test
     fun `a sub-resource HTTP error is ignored`() {
-        var reported: String? = null
-        val client = PhantomWebViewClient(blocklist, onMainFrameError = { reported = it })
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
         val response: WebResourceResponse = mockk()
         every { response.statusCode } returns 404
 
@@ -318,7 +326,7 @@ class PhantomWebViewClientTest {
             response,
         )
 
-        assertNull("a sub-resource 404 must not fail the action", reported)
+        assertNull("a sub-resource 404 must not fail the action", tracker.current())
     }
 
     @Test
@@ -338,12 +346,12 @@ class PhantomWebViewClientTest {
     private fun trackerClient(
         counter: TrackerVisitCounter,
         imagesBlocked: Boolean = true,
-        onMainFrameError: ((String) -> Unit)? = null,
+        mainFrame: MainFrameLoadTracker? = null,
     ) = PhantomWebViewClient(
         blocklist,
         trackerCounter = counter,
         imagesBlocked = { imagesBlocked },
-        onMainFrameError = onMainFrameError,
+        mainFrame = mainFrame,
     )
 
     private fun subresource(url: String, accept: String = "*/*", mainFrame: Boolean = false): WebResourceRequest {
@@ -452,8 +460,8 @@ class PhantomWebViewClientTest {
     fun `a main-frame failure marks the visit and is still reported`() {
         every { blocklist.isBlocked(any()) } returns false
         val counter = TrackerVisitCounter(trackerHosts)
-        var reported: String? = null
-        val client = trackerClient(counter, onMainFrameError = { reported = it })
+        val tracker = startedTracker()
+        val client = trackerClient(counter, mainFrame = tracker)
 
         client.onReceivedError(
             view,
@@ -462,7 +470,8 @@ class PhantomWebViewClientTest {
         )
 
         assertTrue(counter.snapshot().mainFrameFailed)
-        assertNotNull("the #268 main-frame report is unchanged", reported)
+        assertNotNull("the #268 main-frame report is unchanged", tracker.current())
+        assertEquals("no connection is the device, not the page", LoadFailureKind.LOCAL, tracker.current()!!.kind)
     }
 
     @Test
@@ -475,5 +484,146 @@ class PhantomWebViewClientTest {
             netError(WebViewClient.ERROR_CONNECT, "net::ERR_CONNECTION_REFUSED"),
         )
         assertFalse(counter.snapshot().mainFrameFailed)
+    }
+
+    // --- #353: the latest main-frame navigation decides --------------------------------------------
+
+    private fun navigation(url: String, mainFrame: Boolean = true): WebResourceRequest {
+        val req: WebResourceRequest = mockk()
+        every { req.url } returns Uri.parse(url)
+        every { req.requestHeaders } returns mapOf("Accept" to "text/html")
+        every { req.isForMainFrame } returns mainFrame
+        every { req.isRedirect } returns false
+        return req
+    }
+
+    private fun httpResponse(status: Int, headers: Map<String, String> = emptyMap()): WebResourceResponse {
+        val response: WebResourceResponse = mockk()
+        every { response.statusCode } returns status
+        every { response.responseHeaders } returns headers
+        return response
+    }
+
+    @Test
+    fun `a bot challenge that passes and reloads the page is not a failed visit`() {
+        // The #353 false failure. Cloudflare answers the first request with a 403 challenge page
+        // (cf-mitigated: challenge); the challenge script passes in a real WebView and navigates
+        // to the same URL again, which loads with a 200. #268 kept the first error, so this visit
+        // was logged as failed even though the page loaded.
+        every { blocklist.isBlocked(any()) } returns false
+        val tracker = MainFrameLoadTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+        val first = navigation("https://www.nolo.com/legal-encyclopedia/immigration")
+
+        assertNull(client.shouldInterceptRequest(view, first))
+        client.onReceivedHttpError(view, first, httpResponse(403, mapOf("cf-mitigated" to "challenge")))
+        assertEquals("the challenge itself is a bot wall", LoadFailureKind.BOT_WALL, tracker.current()?.kind)
+
+        val retry = navigation("https://www.nolo.com/legal-encyclopedia/immigration")
+        client.shouldInterceptRequest(view, retry)
+
+        assertNull("the page the challenge led to loaded; the visit worked", tracker.current())
+    }
+
+    @Test
+    fun `a challenge that never passes stays a bot-wall failure`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val tracker = MainFrameLoadTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+        val req = navigation("https://www.example.com/")
+
+        client.shouldInterceptRequest(view, req)
+        client.onReceivedHttpError(view, req, httpResponse(503, mapOf("CF-Mitigated" to "challenge")))
+
+        assertEquals(LoadFailureKind.BOT_WALL, tracker.current()?.kind)
+        assertEquals("blocked by bot check, http(503)", tracker.current()?.describe())
+    }
+
+    @Test
+    fun `a later failure does not hide behind an earlier success, and vice versa`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val tracker = MainFrameLoadTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+
+        client.shouldInterceptRequest(view, navigation("https://a.example/"))
+        // The page then navigates itself somewhere that is gone.
+        val next = navigation("https://a.example/moved")
+        client.shouldInterceptRequest(view, next)
+        client.onReceivedHttpError(view, next, httpResponse(404))
+
+        assertEquals("what the WebView ends on is what counts", LoadFailureKind.DEAD, tracker.current()?.kind)
+    }
+
+    @Test
+    fun `within one navigation the first failure wins`() {
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+        val req = navigation("https://a.example/")
+
+        client.onReceivedHttpError(view, req, httpResponse(404))
+        client.onReceivedError(view, req, netError(WebViewClient.ERROR_CONNECT, "net::ERR_CONNECTION_RESET"))
+
+        assertEquals("http(404)", tracker.current()?.code)
+    }
+
+    @Test
+    fun `a sub-resource request does not start a new navigation`() {
+        every { blocklist.isBlocked(any()) } returns false
+        val tracker = MainFrameLoadTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+        val page = navigation("https://a.example/")
+
+        client.shouldInterceptRequest(view, page)
+        client.onReceivedHttpError(view, page, httpResponse(410))
+        client.shouldInterceptRequest(view, navigation("https://cdn.example/app.js", mainFrame = false))
+
+        assertEquals(LoadFailureKind.DEAD, tracker.current()?.kind)
+    }
+
+    @Test
+    fun `an error left over from the previous page is not charged to the next visit`() {
+        // Callbacks are posted, so one from the page the pool just released can land after the
+        // next acquire reset the tracker, and before that visit's own load starts.
+        every { blocklist.isBlocked(any()) } returns false
+        val tracker = MainFrameLoadTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+
+        tracker.reset() // acquire
+        client.onReceivedError(
+            view,
+            navigation("https://previous.example/"),
+            netError(WebViewClient.ERROR_TIMEOUT, "net::ERR_TIMED_OUT"),
+        )
+        client.shouldInterceptRequest(view, navigation("https://next.example/"))
+
+        assertNull(tracker.current())
+    }
+
+    @Test
+    fun `a navigation to an app scheme is refused instead of failing the page`() {
+        // A page that sends a Chrome-on-Android visitor to its app (intent://, market://) used to
+        // reach WebView, which failed the main frame with ERR_UNKNOWN_URL_SCHEME although the page
+        // itself had loaded.
+        every { blocklist.isBlocked(any()) } returns false
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+
+        assertTrue(client.shouldOverrideUrlLoading(view, navigation("intent://scan/#Intent;scheme=zxing;end")))
+        assertTrue(client.shouldOverrideUrlLoading(view, navigation("market://details?id=com.example")))
+        assertFalse(client.shouldOverrideUrlLoading(view, navigation("https://www.example.com/next")))
+        assertNull("a refused page-initiated navigation leaves the loaded page as it was", tracker.current())
+    }
+
+    @Test
+    fun `a refused main-frame server redirect is a local failure`() {
+        // The page never loads, and WebView reports nothing (it never passes ERR_ABORTED on).
+        every { blocklist.isBlocked("evil.example") } returns true
+        val tracker = startedTracker()
+        val client = PhantomWebViewClient(blocklist, mainFrame = tracker)
+        val redirect = navigation("https://evil.example/landing")
+        every { redirect.isRedirect } returns true
+
+        assertTrue(client.shouldOverrideUrlLoading(view, redirect))
+        assertEquals(LoadFailureKind.LOCAL, tracker.current()?.kind)
     }
 }
