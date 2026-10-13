@@ -147,6 +147,10 @@
     <string name="settings_mobile_intensity_title">Интенсивность на мобильных данных</string>
     <string name="settings_intensity_off">Выкл.</string>
     <string name="settings_mobile_intensity_off_description">Приостановлено на мобильных данных</string>
+    <string name="settings_charging_intensity_title">Интенсивность по Wi-Fi при зарядке</string>
+    <string name="settings_charging_intensity_off_description">Выкл.: при зарядке тоже действует интенсивность по Wi-Fi</string>
+    <string name="settings_charging_intensity_description">Действует, когда телефон заряжается и подключён к безлимитной сети Wi-Fi. Мобильные данные и лимитные сети Wi-Fi сохраняют собственную настройку, а активные часы, режим энергосбережения и пороги заряда по-прежнему действуют.</string>
+    <string name="settings_charging_intensity_not_higher">Не выше интенсивности по Wi-Fi, поэтому зарядка ничего не меняет.</string>
     <string name="settings_active_hours_title">Активные часы</string>
     <string name="settings_clear_dialog_title">Удалить все данные?</string>
     <string name="settings_clear_dialog_body">Это навсегда удалит:\n• Все журналы действий\n• Твой демографический профиль\n• Кэш профилей рекламных платформ\n• Историю генерации персон\n\nВсе настройки будут сброшены. Движок остановится. После перезапуска приманки будут строиться только вокруг синтетической персоны, без данных о тебе.\n\nЭто действие нельзя отменить.</string>
@@ -508,6 +512,7 @@
     <string name="dashboard_warning_battery_optimized">Оптимизация батареи Android ограничивает Fauxx. Когда экран выключен, Android может сильно растягивать паузы между его действиями. Разреши неограниченное фоновое использование, чтобы движок работал по графику.</string>
     <string name="dashboard_warning_action_allow">Разрешить</string>
     <string name="dashboard_engine_state_active">Генерирует синтетическую активность</string>
+    <string name="dashboard_charging_boost">Ускорение при зарядке: %1$s</string>
     <string name="dashboard_engine_state_paused_wifi">Пауза — ожидание подходящей сети</string>
     <!-- PENDING NATIVE-SPEAKER REVIEW -->
     <string name="dashboard_engine_state_paused_metered_wifi">Пауза — это лимитное Wi-Fi-подключение</string>

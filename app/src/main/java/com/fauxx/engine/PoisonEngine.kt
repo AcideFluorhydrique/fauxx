@@ -372,6 +372,35 @@ class PoisonEngine @Inject constructor(
     private val networkChanges = MutableStateFlow(0L)
 
     /**
+     * Bumped each time the device is plugged in or unplugged, so a wait can react to the charging
+     * boost at once (#316) instead of on its next re-check. Battery level updates do not bump it.
+     */
+    private val chargingChanges = MutableStateFlow(0L)
+
+    private val _rateConditions = MutableStateFlow(RateConditions())
+
+    /**
+     * Charging, network and Battery Saver state as the receivers last saw it (#316), for the UI
+     * to show the charging boost with [IntensityPolicy]. Only meaningful while the engine runs:
+     * the receivers are unregistered when it stops.
+     */
+    val rateConditions: StateFlow<RateConditions> = _rateConditions.asStateFlow()
+
+    /** Record a charging state, waking any wait that watches for a change (#316). */
+    private fun setCharging(charging: Boolean) {
+        if (cachedIsCharging.getAndSet(charging) != charging) chargingChanges.value++
+    }
+
+    /** Republish [rateConditions] from the cached state. Cheap; called from every receiver. */
+    private fun refreshRateConditions() {
+        _rateConditions.value = RateConditions(
+            charging = cachedIsCharging.get(),
+            unmetered = cachedTransport.get() == NetworkTransport.WIFI && !cachedNetworkBlocked.get(),
+            batterySaver = cachedPowerSave.value,
+        )
+    }
+
+    /**
      * Seed the cached constraint state directly. Mirrors what the battery/connectivity
      * BroadcastReceivers do, for tests that drive constraint transitions without a live
      * broadcast (e.g. a no-network↔battery flicker exercising the cumulative resign clock).
@@ -387,8 +416,9 @@ class PoisonEngine @Inject constructor(
         transport?.let { cachedTransport.set(it); networkChanges.value++ }
         networkBlocked?.let { cachedNetworkBlocked.set(it); networkChanges.value++ }
         batteryLevel?.let { cachedBatteryLevel.set(it) }
-        charging?.let { cachedIsCharging.set(it) }
+        charging?.let { setCharging(it) }
         powerSave?.let { cachedPowerSave.value = it }
+        refreshRateConditions()
     }
 
     /** Today's successful action count, incremented on each action. Reset on day rollover. */
@@ -419,7 +449,11 @@ class PoisonEngine @Inject constructor(
             val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
             if (level >= 0 && scale > 0) cachedBatteryLevel.set(level * 100 / scale)
             // EXTRA_PLUGGED is 0 when unplugged; non-zero values are AC / USB / wireless.
-            cachedIsCharging.set(intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
+            // This broadcast arrives within a second or so of plugging in or unplugging (it is
+            // what ACTION_POWER_CONNECTED/DISCONNECTED accompany), so the charging boost (#316)
+            // needs no receiver of its own.
+            setCharging(intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
+            refreshRateConditions()
         }
     }
 
@@ -427,6 +461,7 @@ class PoisonEngine @Inject constructor(
     private val powerSaveReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
             cachedPowerSave.value = isPowerSaveModeNow()
+            refreshRateConditions()
         }
     }
 
@@ -438,18 +473,21 @@ class PoisonEngine @Inject constructor(
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
             cachedTransport.set(classifyTransport(caps, lookupUnderlyingCaps()))
             networkChanges.value++
+            refreshRateConditions()
         }
 
         // API 29+. On older releases it is never called and the flag stays false.
         override fun onBlockedStatusChanged(network: Network, blocked: Boolean) {
             cachedNetworkBlocked.set(blocked)
             networkChanges.value++
+            refreshRateConditions()
         }
 
         override fun onLost(network: Network) {
             cachedTransport.set(NetworkTransport.NONE)
             cachedNetworkBlocked.set(false)
             networkChanges.value++
+            refreshRateConditions()
         }
     }
 
@@ -723,13 +761,14 @@ class PoisonEngine @Inject constructor(
     }
 
     private fun registerConstraintReceivers() {
-        // Seed battery level + charging state from sticky broadcast
+        // Seed battery level + charging state from sticky broadcast. This is also how a start while
+        // already plugged in gets the charging boost (#316) from its first pass.
         val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         if (batteryIntent != null) {
             val level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
             val scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
             if (level >= 0 && scale > 0) cachedBatteryLevel.set(level * 100 / scale)
-            cachedIsCharging.set(batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
+            setCharging(batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
         }
         // Seed network transport state
         cachedTransport.set(checkTransportNow())
@@ -751,6 +790,7 @@ class PoisonEngine @Inject constructor(
         // Seeded AFTER registering: the change broadcast is not sticky, so a change landing between
         // a seed and the registration would otherwise be lost until the next one (#313).
         cachedPowerSave.value = isPowerSaveModeNow()
+        refreshRateConditions()
         runCatching {
             context.getSystemService(ConnectivityManager::class.java)
                 .registerDefaultNetworkCallback(networkCallback)
@@ -779,6 +819,8 @@ class PoisonEngine @Inject constructor(
         // human-like dwell time on cross-niche transitions. In-memory only — a fresh
         // engine run starts a fresh "browsing session," which is realistic.
         var lastCategory: CategoryPool? = null
+        // The charging boost last logged (#316), so the log says once when it starts and stops.
+        var loggedBoost: IntensityLevel? = null
         while (scope.isActive) {
             val currentProfile = profile.getProfile()
             // Read before the constraint check, so a network change landing while this pass
@@ -894,6 +936,18 @@ class PoisonEngine @Inject constructor(
             // this one iteration before the loop-top recompute corrects it.
             val activeIntensity = effectiveIntensity ?: continue
 
+            // Say once when the charging boost starts or stops shaping the rate (#316), so an
+            // exported log explains a change of pace.
+            val boost = currentChargingBoost(currentProfile)
+            if (boost != loggedBoost) {
+                if (boost != null) {
+                    Timber.i("Charging boost on: ${currentProfile.intensity} -> $boost while charging on unmetered Wi-Fi")
+                } else {
+                    Timber.i("Charging boost off: back to ${activeIntensity.name}")
+                }
+                loggedBoost = boost
+            }
+
             // First time we clear the constraint gate this run (with a usable network),
             // tell the FGS the engine has committed to running so it can retire any stale
             // pending resume (#156). Fires after the gate, never at start, so a still-needed
@@ -919,12 +973,15 @@ class PoisonEngine @Inject constructor(
                 // Sleep until the oldest action leaves the window, through the alarm-backed sleep:
                 // one wakeup instead of a re-check every 15 s, which with the screen off would
                 // wake the phone up to 240 times an hour while the window drains (#335). A change
-                // of rate (a new intensity, or a move between Wi-Fi and mobile) ends it early.
+                // of rate (a new intensity, a move between Wi-Fi and mobile, or plugging in with a
+                // charging boost, #316) ends it early.
                 val oldest = recentActionTimestamps.peek() ?: rateLimitNow
                 val untilDrained = (oldest + RATE_LIMIT_WINDOW_MS - rateLimitNow)
                     .coerceAtLeast(RATE_LIMIT_PAUSE_MS)
                 val cap = activeIntensity.actionsPerHour
-                sleepRespectingConstraints(untilDrained, s, endOnNetworkChangeFrom = networkSeen) {
+                sleepRespectingConstraints(
+                    untilDrained, s, endOnNetworkChangeFrom = networkSeen, watchCharging = true,
+                ) {
                     effectiveIntensity(profile.getProfile())?.actionsPerHour != cap
                 }
                 continue
@@ -1048,7 +1105,9 @@ class PoisonEngine @Inject constructor(
             if (logEntry.success) lastCategory = executedCategory
             val effectiveDelay = maxOf(0L, scheduledMs - execElapsed)
             Timber.d("Action: $moduleName/$category exec=${execElapsed}ms scheduled=${scheduledMs}ms effective=${effectiveDelay}ms")
-            sleepRespectingConstraints(effectiveDelay, s)
+            // Plugging in mid-wait with a charging boost set redraws the rest of the wait at the
+            // boosted rate (#316), so a LOW wait of many minutes does not hold the boost back.
+            sleepRespectingConstraints(effectiveDelay, s, redrawOnBoostFrom = activeIntensity.actionsPerHour)
         }
     }
 
@@ -1070,6 +1129,21 @@ class PoisonEngine @Inject constructor(
          * [stopEarly] check between chunks would not run until the drain alarm (#335).
          */
         endOnNetworkChangeFrom: Long? = null,
+        /**
+         * When true, plugging in or unplugging is checked against [stopEarly] at once (#316)
+         * rather than at the end of the current chunk, which with the CPU suspended would be the
+         * deadline.
+         */
+        watchCharging: Boolean = false,
+        /**
+         * The rate (actions/hour) this wait was drawn at. When set, plugging in mid-wait so that
+         * the charging boost raises the rate redraws the rest of the wait at the new rate (#316).
+         * A Poisson wait is memoryless, so a fresh draw at the new rate is exactly what the rest
+         * of it would have been had the rate been that all along. A wait is never lengthened: the
+         * redraw only ever moves the deadline earlier, and unplugging leaves it alone (the next
+         * wait is drawn at the lower rate).
+         */
+        redrawOnBoostFrom: Int? = null,
         stopEarly: (() -> Boolean)? = null,
     ) {
         // No wait: keep holding the lock straight into the next action. Releasing here, with no
@@ -1088,16 +1162,43 @@ class PoisonEngine @Inject constructor(
         // AFTER a wait. A wakeup that ends a wait before the deadline means the alarm fired early,
         // so it is set again and the wait goes on; past [MAX_EARLY_WAKES] the rest of this sleep
         // stops trusting the wake source and uses plain delays.
-        val deadline = clock.elapsedRealtime() + totalMs
+        var deadline = clock.elapsedRealtime() + totalMs
+        var target = totalMs
+        var drawnAt = redrawOnBoostFrom
+        var chargingSeen = if (watchCharging || redrawOnBoostFrom != null) chargingChanges.value else null
         scheduleWakeup(s, deadline)
         try {
             var slept = 0L
             var earlyWakes = 0
-            while (slept < totalMs) {
+            while (slept < target) {
                 val realRemaining = (deadline - clock.elapsedRealtime()).coerceAtLeast(1L)
-                val chunk = minOf(totalMs - slept, realRemaining, SLEEP_CONSTRAINT_RECHECK_MS)
-                val outcome = awaitChunk(chunk, trustWakeup = earlyWakes < MAX_EARLY_WAKES, endOnNetworkChangeFrom)
+                val chunk = minOf(target - slept, realRemaining, SLEEP_CONSTRAINT_RECHECK_MS)
+                val outcome = awaitChunk(
+                    chunk, trustWakeup = earlyWakes < MAX_EARLY_WAKES, endOnNetworkChangeFrom, chargingSeen,
+                )
                 if (outcome == WaitOutcome.NETWORK_CHANGED) return
+                if (outcome == WaitOutcome.CHARGING_CHANGED) {
+                    // Plugged in or unplugged (#316). Not time slept: the deadline still bounds the
+                    // wait, and the next chunk is sized from it.
+                    chargingSeen = chargingChanges.value
+                    val current = profile.getProfile()
+                    if (checkConstraints(current) != null) return
+                    if (stopEarly?.invoke() == true) return
+                    val from = drawnAt
+                    val rate = effectiveIntensity(current)?.actionsPerHour
+                    if (from != null && rate != null && rate > from) {
+                        val redrawn = scheduler.poissonDelay(rate.toFloat())
+                        val now = clock.elapsedRealtime()
+                        if (now + redrawn < deadline) {
+                            deadline = now + redrawn
+                            target = slept + redrawn
+                            scheduleWakeup(s, deadline)
+                            Timber.d("Charging boost: wait redrawn at $rate/h, next action in ${redrawn}ms")
+                        }
+                        drawnAt = rate
+                    }
+                    continue
+                }
                 val woken = outcome == WaitOutcome.WOKEN
                 // A wakeup is not time slept; elapsed realtime decides instead.
                 if (!woken) slept += chunk
@@ -1107,7 +1208,7 @@ class PoisonEngine @Inject constructor(
                     scheduleWakeup(s, deadline) // the alarm that fired is spent
                     releaseHandover(s) // back to waiting: the alarm's hold is no longer needed
                 }
-                if (slept < totalMs) {
+                if (slept < target) {
                     if (checkConstraints(profile.getProfile()) != null) return
                     if (stopEarly?.invoke() == true) return
                 }
@@ -1117,13 +1218,19 @@ class PoisonEngine @Inject constructor(
         }
     }
 
-    private enum class WaitOutcome { ELAPSED, WOKEN, NETWORK_CHANGED }
+    private enum class WaitOutcome { ELAPSED, WOKEN, NETWORK_CHANGED, CHARGING_CHANGED }
 
     /**
      * Wait one chunk: for the wakeup (or a plain delay once wakeups are no longer trusted), and,
-     * when [networkSeen] is set, for a network change after it, whichever comes first.
+     * when [networkSeen] is set, for a network change after it, and, when [chargingSeen] is set,
+     * for plugging in or unplugging after it (#316), whichever comes first.
      */
-    private suspend fun awaitChunk(chunk: Long, trustWakeup: Boolean, networkSeen: Long?): WaitOutcome {
+    private suspend fun awaitChunk(
+        chunk: Long,
+        trustWakeup: Boolean,
+        networkSeen: Long?,
+        chargingSeen: Long? = null,
+    ): WaitOutcome {
         suspend fun timed(): WaitOutcome =
             if (trustWakeup) {
                 if (wakeup.await(chunk)) WaitOutcome.WOKEN else WaitOutcome.ELAPSED
@@ -1131,20 +1238,31 @@ class PoisonEngine @Inject constructor(
                 delay(chunk)
                 WaitOutcome.ELAPSED
             }
-        if (networkSeen == null) return timed()
-        if (networkChanges.value != networkSeen) return WaitOutcome.NETWORK_CHANGED
+        if (networkSeen == null && chargingSeen == null) return timed()
+        if (networkSeen != null && networkChanges.value != networkSeen) return WaitOutcome.NETWORK_CHANGED
+        if (chargingSeen != null && chargingChanges.value != chargingSeen) return WaitOutcome.CHARGING_CHANGED
         return coroutineScope {
             val timer = async { timed() }
-            val network = async {
-                networkChanges.first { it != networkSeen }
-                WaitOutcome.NETWORK_CHANGED
+            val network = networkSeen?.let { seen ->
+                async {
+                    networkChanges.first { it != seen }
+                    WaitOutcome.NETWORK_CHANGED
+                }
+            }
+            val charging = chargingSeen?.let { seen ->
+                async {
+                    chargingChanges.first { it != seen }
+                    WaitOutcome.CHARGING_CHANGED
+                }
             }
             select<WaitOutcome> {
                 timer.onAwait { it }
-                network.onAwait { it }
+                network?.onAwait { it }
+                charging?.onAwait { it }
             }.also {
                 timer.cancel()
-                network.cancel()
+                network?.cancel()
+                charging?.cancel()
             }
         }
     }
@@ -1211,17 +1329,29 @@ class PoisonEngine @Inject constructor(
     }
 
     /**
-     * The action rate for the current network transport, or null when the engine must
-     * pause: no network at all, or on mobile data with [PoisonProfile.mobileIntensity]
-     * set to Off (issue #62).
+     * The action rate for the current network transport and charging state, or null when the
+     * engine must pause: no network at all, or on mobile data with [PoisonProfile.mobileIntensity]
+     * set to Off (issue #62). See [IntensityPolicy.effectiveIntensity], which also applies the
+     * charging boost (#316).
      */
-    private fun effectiveIntensity(p: PoisonProfile): IntensityLevel? = if (cachedNetworkBlocked.get()) null else when (cachedTransport.get()) {
-        NetworkTransport.WIFI -> p.intensity
-        // Metered WiFi spends the user's data allowance, so it is governed by the mobile
-        // budget, not the WiFi one (issue #288).
-        NetworkTransport.METERED_WIFI, NetworkTransport.CELLULAR -> p.mobileIntensity
-        NetworkTransport.NONE -> null
-    }
+    private fun effectiveIntensity(p: PoisonProfile): IntensityLevel? = IntensityPolicy.effectiveIntensity(
+        profile = p,
+        transport = cachedTransport.get(),
+        networkBlocked = cachedNetworkBlocked.get(),
+        isCharging = cachedIsCharging.get(),
+        batterySaver = cachedPowerSave.value,
+    )
+
+    /** The charging boost in effect right now (#316), or null. */
+    private fun currentChargingBoost(p: PoisonProfile): IntensityLevel? =
+        if (cachedNetworkBlocked.get() || cachedTransport.get() != NetworkTransport.WIFI) null
+        else IntensityPolicy.chargingBoost(
+            wifiIntensity = p.intensity,
+            chargingIntensity = p.chargingIntensity,
+            isCharging = cachedIsCharging.get(),
+            isUnmetered = true,
+            batterySaver = cachedPowerSave.value,
+        )
 
     /**
      * Returns null if all constraints pass, or the specific [EngineState] pause reason.
@@ -1651,6 +1781,7 @@ class PoisonProfileRepository @Inject constructor(
         // downgrade to a pre-0.3.2 build lands on the equivalent on/off behavior.
         prefs[com.fauxx.di.PreferenceKeys.MOBILE_INTENSITY] = p.mobileIntensity?.name ?: MOBILE_INTENSITY_OFF
         prefs[com.fauxx.di.PreferenceKeys.WIFI_ONLY] = (p.mobileIntensity == null)
+        prefs[com.fauxx.di.PreferenceKeys.CHARGING_INTENSITY] = p.chargingIntensity?.name ?: CHARGING_INTENSITY_OFF
         prefs[com.fauxx.di.PreferenceKeys.BATTERY_THRESHOLD_BATTERY] = p.batteryThresholdBattery
         prefs[com.fauxx.di.PreferenceKeys.BATTERY_THRESHOLD_CHARGING] = p.batteryThresholdCharging
         prefs[com.fauxx.di.PreferenceKeys.EXCLUDED_SEARCH_ENGINES] = p.excludedSearchEngines
@@ -1721,6 +1852,7 @@ class PoisonProfileRepository @Inject constructor(
             enabled = prefs[com.fauxx.di.PreferenceKeys.ENABLED] ?: false,
             intensity = intensity,
             mobileIntensity = readMobileIntensity(prefs, intensity),
+            chargingIntensity = readChargingIntensity(prefs),
             batteryThresholdBattery =
                 prefs[com.fauxx.di.PreferenceKeys.BATTERY_THRESHOLD_BATTERY] ?: legacyBatteryThreshold(prefs),
             batteryThresholdCharging =
@@ -1801,8 +1933,23 @@ class PoisonProfileRepository @Inject constructor(
         return runCatching { com.fauxx.data.model.IntensityLevel.valueOf(raw) }.getOrNull()
     }
 
+    /**
+     * Charging boost (#316). Absent (a profile from before the setting existed), the "OFF"
+     * sentinel, or a corrupt value all read as null: no boost, the pre-#316 behavior.
+     */
+    private fun readChargingIntensity(
+        prefs: androidx.datastore.preferences.core.Preferences
+    ): com.fauxx.data.model.IntensityLevel? {
+        val raw = prefs[com.fauxx.di.PreferenceKeys.CHARGING_INTENSITY] ?: return null
+        if (raw == CHARGING_INTENSITY_OFF) return null
+        return runCatching { com.fauxx.data.model.IntensityLevel.valueOf(raw) }.getOrNull()
+    }
+
     private companion object {
         /** Stored sentinel for "paused on mobile data" in the MOBILE_INTENSITY pref. */
         const val MOBILE_INTENSITY_OFF = "OFF"
+
+        /** Stored sentinel for "no charging boost" in the CHARGING_INTENSITY pref (#316). */
+        const val CHARGING_INTENSITY_OFF = "OFF"
     }
 }

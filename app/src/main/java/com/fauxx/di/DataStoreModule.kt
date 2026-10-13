@@ -38,6 +38,10 @@ object PreferenceKeys {
     // IntensityLevel name while on mobile data, or the literal "OFF" sentinel for "pause on
     // mobile". Absent = legacy profile, derive from WIFI_ONLY (issue #62).
     val MOBILE_INTENSITY = stringPreferencesKey("mobile_intensity")
+
+    // IntensityLevel name to raise the Wi-Fi rate to while charging (#316), or the literal "OFF"
+    // sentinel. Absent (every profile before #316) = Off, so no migration is needed.
+    val CHARGING_INTENSITY = stringPreferencesKey("charging_intensity")
     // Legacy single battery threshold + "ignore it while charging" toggle. Superseded by the two
     // independent thresholds below (#216) but still READ for lazy migration, so a user who had
     // customised the old slider keeps their setting instead of being reset to the default.

@@ -12,6 +12,11 @@ import com.fauxx.ui.theme.ThemeMode
  *   e.g. HIGH on Wi-Fi but LOW on mobile instead of the old all-or-nothing toggle. The
  *   legacy `wifi_only` preference key migrates lazily: true → null, false → mirror
  *   [intensity] (see PoisonProfileRepository.prefsToProfile).
+ * @property chargingIntensity Action rate while the device is charging on an unmetered network, or
+ *   null (the default) to keep [intensity] (issue #316). A boost only: it applies when it is higher
+ *   than [intensity], never on mobile data or metered Wi-Fi (those stay on [mobileIntensity],
+ *   charging or not), and never while Battery Saver is on. Quiet hours and every other pause still
+ *   win. See `IntensityPolicy`.
  * @property batteryThresholdBattery Pause when battery level drops below this percentage while NOT charging (0-100).
  * @property batteryThresholdCharging Pause when battery level drops below this percentage while charging (0-100).
  * @property pauseOnBatterySaver Pause while Android's Battery Saver is on (issue #313), resuming as
@@ -77,6 +82,7 @@ data class PoisonProfile(
     val enabled: Boolean = false,
     val intensity: IntensityLevel = IntensityLevel.MEDIUM,
     val mobileIntensity: IntensityLevel? = null,
+    val chargingIntensity: IntensityLevel? = null,
     val batteryThresholdBattery: Int = 20,
     val batteryThresholdCharging: Int = 20,
     val pauseOnBatterySaver: Boolean = false,

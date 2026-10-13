@@ -310,6 +310,10 @@
     <string name="settings_mobile_intensity_title">Mobile data intensity</string>
     <string name="settings_intensity_off">Off</string>
     <string name="settings_mobile_intensity_off_description">Paused on mobile data</string>
+    <string name="settings_charging_intensity_title">Wi-Fi intensity while charging</string>
+    <string name="settings_charging_intensity_off_description">Off: the Wi-Fi intensity applies while charging too</string>
+    <string name="settings_charging_intensity_description">Used while the phone is plugged in on unmetered Wi-Fi. Mobile data and metered Wi-Fi keep their own setting, and active hours, Battery Saver and the battery limits still apply.</string>
+    <string name="settings_charging_intensity_not_higher">Not higher than your Wi-Fi intensity, so charging changes nothing.</string>
     <string name="settings_resume_on_boot_title">Resume after reboot</string>
     <string name="settings_resume_on_boot_description">After a reboot, show a notification to resume protection. Android blocks apps from silently starting themselves in the background, so a tap is required.</string>
     <string name="settings_load_images_title">Load images on synthetic pages</string>
@@ -479,6 +483,7 @@
     <string name="dashboard_warning_battery_optimized">Android battery optimization is restricting Fauxx. With the screen off, Android can space its activity much further apart. Allow unrestricted background usage to keep the engine on schedule.</string>
     <string name="dashboard_warning_action_allow">Allow</string>
     <string name="dashboard_engine_state_active">Generating synthetic activity</string>
+    <string name="dashboard_charging_boost">Charging boost: %1$s</string>
     <string name="dashboard_engine_state_paused_wifi">Paused — waiting for a usable network</string>
     <string name="dashboard_engine_state_paused_metered_wifi">Paused — this Wi-Fi is metered</string>
     <string name="dashboard_metered_wifi_explainer">Android reports this network as metered, so Fauxx is treating it like mobile data. Set a mobile-data level to run here anyway.</string>
