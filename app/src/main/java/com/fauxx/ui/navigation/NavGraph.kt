@@ -2,11 +2,14 @@ package com.fauxx.ui.navigation
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -22,6 +25,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -37,7 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -100,7 +107,7 @@ fun FauxxNavGraph(showOnboarding: Boolean) {
                     bottomNavItems.forEach { (screen, icon) ->
                         NavigationBarItem(
                             icon = { Icon(icon, contentDescription = stringResource(screen.labelRes)) },
-                            label = { Text(stringResource(screen.labelRes)) },
+                            label = { BottomNavLabel(stringResource(screen.labelRes)) },
                             selected = currentDest?.hierarchy?.any { it.route == screen.route } == true,
                             onClick = {
                                 navController.navigate(screen.route) {
@@ -169,8 +176,20 @@ fun FauxxNavGraph(showOnboarding: Boolean) {
             }
 
             if (showHelp) {
+                // Global top-right overlay drawn above every screen's own (scrolling) content.
+                // The opaque background, painted before the padding so it reaches the screen's
+                // top and end edges, hides whatever scrolls underneath; without it the icons
+                // floated over card text once the Dashboard was scrolled (#348). It uses the
+                // same colorScheme.background every screen paints, so it is invisible until
+                // content actually passes under it.
                 Row(
-                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .background(
+                            color = MaterialTheme.colorScheme.background,
+                            shape = RoundedCornerShape(bottomStart = 16.dp)
+                        )
+                        .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     LanguagePickerButton()
@@ -179,6 +198,36 @@ fun FauxxNavGraph(showOnboarding: Boolean) {
             }
         }
     }
+}
+
+/** Smallest size a bottom-nav label may shrink to before it is ellipsized instead. */
+private val BottomNavLabelMinFontSize = 9.sp
+
+/**
+ * Bottom-navigation label that always stays on a single line (#347).
+ *
+ * At 320dp each of the five items gets under 60dp, which is too narrow for "Dashboard" (and
+ * for the longer translations such as "Segmentación") at the default label size, so the
+ * label used to wrap onto a second line. The label now shrinks in small steps from the
+ * style [NavigationBarItem] provides down to [BottomNavLabelMinFontSize], and only if it
+ * still does not fit (French "Tableau de bord" at 320dp) is it ellipsized. On normal-width
+ * screens nothing changes, and the icon's content description always carries the full label.
+ */
+@Composable
+internal fun BottomNavLabel(text: String, modifier: Modifier = Modifier) {
+    val styleSize = LocalTextStyle.current.fontSize
+    val maxSize = if (styleSize.isSpecified && styleSize > BottomNavLabelMinFontSize) styleSize else 12.sp
+    Text(
+        text = text,
+        modifier = modifier,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = BottomNavLabelMinFontSize,
+            maxFontSize = maxSize,
+            stepSize = 0.5.sp
+        )
+    )
 }
 
 @Composable

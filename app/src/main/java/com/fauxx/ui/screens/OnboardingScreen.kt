@@ -1,5 +1,6 @@
 package com.fauxx.ui.screens
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
@@ -34,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,44 +71,58 @@ fun OnboardingScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    // Fresh scroll position per step, so the next page starts at its top instead of
+    // inheriting how far the previous (possibly long) page was scrolled. Saveable, like
+    // rememberScrollState(), so rotation keeps the position within a step.
+    val contentScroll = rememberSaveable(uiState.step, saver = ScrollState.Saver) {
+        ScrollState(initial = 0)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Content per step
-        when (uiState.step) {
-            0 -> WelcomeStep()
-            1 -> AgeRangeStep(
-                selected = uiState.ageRange,
-                onSelect = { viewModel.setAgeRange(it) }
-            )
-            2 -> GenderStep(
-                selected = uiState.gender,
-                onSelect = { viewModel.setGender(it) }
-            )
-            3 -> InterestsStep(
-                selected = uiState.interests,
-                onToggle = { viewModel.toggleInterest(it) },
-                customMappings = uiState.customInterestMappings,
-                onAddCustom = { viewModel.addCustomInterest(it) },
-                onRemoveCustom = { viewModel.removeCustomInterest(it) }
-            )
-            4 -> ProfessionStep(
-                selected = uiState.profession,
-                onSelect = { viewModel.setProfession(it) }
-            )
-            5 -> RegionStep(
-                selected = uiState.region,
-                onSelect = { viewModel.setRegion(it) }
-            )
-            else -> DoneStep()
+        // Content per step. Only this part scrolls: it takes the space left over by the
+        // navigation Row below, so Skip / Next stay pinned to the bottom of the screen on
+        // every step and every screen size instead of scrolling off it (#347).
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(contentScroll)
+        ) {
+            when (uiState.step) {
+                0 -> WelcomeStep()
+                1 -> AgeRangeStep(
+                    selected = uiState.ageRange,
+                    onSelect = { viewModel.setAgeRange(it) }
+                )
+                2 -> GenderStep(
+                    selected = uiState.gender,
+                    onSelect = { viewModel.setGender(it) }
+                )
+                3 -> InterestsStep(
+                    selected = uiState.interests,
+                    onToggle = { viewModel.toggleInterest(it) },
+                    customMappings = uiState.customInterestMappings,
+                    onAddCustom = { viewModel.addCustomInterest(it) },
+                    onRemoveCustom = { viewModel.removeCustomInterest(it) }
+                )
+                4 -> ProfessionStep(
+                    selected = uiState.profession,
+                    onSelect = { viewModel.setProfession(it) }
+                )
+                5 -> RegionStep(
+                    selected = uiState.region,
+                    onSelect = { viewModel.setRegion(it) }
+                )
+                else -> DoneStep()
+            }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(16.dp))
 
         // Navigation buttons — Skip and Next are equal prominence
         val isLastStep = uiState.step >= 5
