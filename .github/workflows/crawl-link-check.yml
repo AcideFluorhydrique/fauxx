@@ -1,0 +1,85 @@
+name: Crawl List Link Check
+
+# Monthly link-rot check of the bundled crawl lists (assets/crawl_urls.json and
+# assets/crawl_urls/*.json), see issue #353. scripts/check_crawl_urls.py fetches every
+# entry from the runner and reports only entries that are definitely dead: HTTP 404/410 or
+# NXDOMAIN, seen twice. 403/429/5xx/timeouts are inconclusive because runner IPs are
+# datacenter addresses that many sites bot-block, so they are only summarized as counts.
+#
+# The result is kept in ONE tracking issue labelled `link-rot`: created when something is
+# dead, its body replaced on later runs, and closed automatically once nothing is dead.
+on:
+  schedule:
+    # 06:17 UTC on the 3rd of every month (off the hour to avoid the cron rush).
+    - cron: '17 6 3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: crawl-link-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check crawl URLs
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run link check
+        run: |
+          python3 scripts/check_crawl_urls.py \
+            --report link-rot-report.md \
+            --json link-rot-summary.json
+
+      - name: Upload full results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: crawl-link-check
+          path: |
+            link-rot-report.md
+            link-rot-summary.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          label="link-rot"
+          title="Crawl list link rot"
+
+          gh label create "$label" --color "B60205" \
+            --description "Dead entries in the bundled crawl lists" --force
+
+          dead=$(jq '.dead' link-rot-summary.json)
+          existing=$(gh issue list --label "$label" --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+
+          printf '\n\nRun: %s\n' "$RUN_URL" >> link-rot-report.md
+
+          if [ "$dead" -gt 0 ]; then
+            if [ -n "$existing" ]; then
+              gh issue edit "$existing" --body-file link-rot-report.md
+              gh issue comment "$existing" --body "Monthly check found $dead dead entries; the issue body is updated. $RUN_URL"
+              echo "Updated issue #$existing ($dead dead)"
+            else
+              gh issue create --title "$title" --label "$label" --body-file link-rot-report.md
+              echo "Opened a tracking issue ($dead dead)"
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Monthly check found no dead entries, closing. $RUN_URL"
+            gh issue close "$existing" --reason completed
+            echo "Closed issue #$existing"
+          else
+            echo "No dead entries and no open tracking issue."
+          fi

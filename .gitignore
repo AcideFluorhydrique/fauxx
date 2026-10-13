@@ -71,5 +71,7 @@ scripts/*
 !scripts/backfill_city_regions.py
 # E4 (#180) broker-inference co-occurrence builder: regenerates a shipped asset, must be reviewable.
 !scripts/build_cooccurrence.py
+# #353 crawl-list link-rot checker: run monthly by .github/workflows/crawl-link-check.yml.
+!scripts/check_crawl_urls.py
 # JVM attach artifacts from jstack/debugger sessions
 .attach_pid*
