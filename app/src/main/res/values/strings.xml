@@ -487,6 +487,9 @@
     <string name="dashboard_engine_state_paused_rate_limit">Hourly rate limit reached</string>
     <string name="dashboard_engine_state_paused_quiet_hours">Outside active hours</string>
     <string name="dashboard_engine_state_stopped">Engine stopped</string>
+    <string name="dashboard_engine_state_quiet_hours_until">Outside active hours, back at %1$s</string>
+    <string name="dashboard_engine_state_restarting_at">Restarting at %1$s</string>
+    <string name="dashboard_engine_state_paused_until">Paused, back at %1$s</string>
     <string name="dashboard_action_use_mobile_data">Use mobile data</string>
     <string name="dashboard_category_distribution_title">CATEGORY DISTRIBUTION</string>
     <string name="dashboard_category_distribution_help">Shows how your synthetic noise is spread across topic categories. A wider spread means trackers see a more confused profile. Categories are weighted by the targeting engine to maximize distance from your real interests.</string>

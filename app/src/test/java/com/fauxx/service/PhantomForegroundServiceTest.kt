@@ -1,6 +1,7 @@
 package com.fauxx.service
 
 import androidx.work.NetworkType
+import com.fauxx.engine.EngineState
 import com.fauxx.engine.PoisonEngine
 import com.fauxx.engine.modules.MockLocationProviderCleaner
 import com.fauxx.engine.webview.PhantomWebViewPool
@@ -11,6 +12,7 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -53,7 +55,9 @@ class PhantomForegroundServiceTest {
         val service = Robolectric.buildService(PhantomForegroundService::class.java).get()
         val resumeScheduler: ResumeScheduler = mockk(relaxed = true)
         val encryptedFileTree: EncryptedFileTree = mockk(relaxed = true)
-        service.poisonEngine = mockk(relaxed = true)
+        service.poisonEngine = mockk(relaxed = true) {
+            every { engineState } returns MutableStateFlow(EngineState.PAUSED_WIFI)
+        }
         service.webViewPool = mockk(relaxed = true)
         service.resumeScheduler = resumeScheduler
         service.encryptedFileTree = encryptedFileTree
@@ -61,7 +65,8 @@ class PhantomForegroundServiceTest {
         val spec = ResumeSpec.WhenConstraintMet(network = NetworkType.UNMETERED)
         service.onEngineResigned(spec)
 
-        verify(exactly = 1) { resumeScheduler.schedule(spec) }
+        // The pause the engine resigned in is recorded with it, for the dashboard (#346).
+        verify(exactly = 1) { resumeScheduler.schedule(spec, EngineState.PAUSED_WIFI) }
         // Logs are flushed before the FGS tears down so a post-resign kill can't drop them (#158).
         verify(exactly = 1) { encryptedFileTree.flush() }
         val shadow = Shadows.shadowOf(service)
@@ -74,7 +79,7 @@ class PhantomForegroundServiceTest {
         val engine: PoisonEngine = mockk(relaxed = true)
         val resumeScheduler: ResumeScheduler = mockk(relaxed = true) {
             every { cancel() } just Runs
-            every { schedule(any()) } just Runs
+            every { schedule(any(), any()) } just Runs
         }
         service.poisonEngine = engine
         service.webViewPool = mockk<PhantomWebViewPool>(relaxed = true)
@@ -108,7 +113,7 @@ class PhantomForegroundServiceTest {
         assertNotNull("resign callback must have been captured", resignCb.captured)
         val spec = ResumeSpec.AtTime(System.currentTimeMillis() + 60_000)
         resignCb.captured(spec)
-        verify(exactly = 1) { resumeScheduler.schedule(spec) }
+        verify(exactly = 1) { resumeScheduler.schedule(spec, any()) }
         val shadow = Shadows.shadowOf(service)
         assertTrue("invoking the resign callback must stop the service", shadow.isStoppedBySelf)
     }
@@ -132,7 +137,7 @@ class PhantomForegroundServiceTest {
         // Disabling the engine retires any pending resume (so a dropped-but-armed resume
         // can't fire later) and must never queue a new tap-to-resume nag.
         verify(exactly = 1) { resumeScheduler.cancel() }
-        verify(exactly = 0) { resumeScheduler.schedule(any()) }
+        verify(exactly = 0) { resumeScheduler.schedule(any(), any()) }
     }
 
     @Test

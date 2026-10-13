@@ -493,6 +493,9 @@
     <string name="dashboard_engine_state_paused_rate_limit">Limite horaire atteinte</string>
     <string name="dashboard_engine_state_paused_quiet_hours">En dehors des heures actives</string>
     <string name="dashboard_engine_state_stopped">Moteur arrêté</string>
+    <string name="dashboard_engine_state_quiet_hours_until">En dehors des heures actives, reprise à %1$s</string>
+    <string name="dashboard_engine_state_restarting_at">Redémarrage à %1$s</string>
+    <string name="dashboard_engine_state_paused_until">En pause, reprise à %1$s</string>
     <string name="dashboard_action_use_mobile_data">Utiliser les données mobiles</string>
     <string name="dashboard_category_distribution_title">RÉPARTITION DES CATÉGORIES</string>
     <string name="dashboard_category_distribution_help">Montre comment ton bruit synthétique est réparti entre les catégories de sujets. Une répartition plus large signifie que les traqueurs voient un profil plus confus. Les catégories sont pondérées par le moteur de ciblage pour maximiser la distance avec tes centres d\'intérêt réels.</string>
