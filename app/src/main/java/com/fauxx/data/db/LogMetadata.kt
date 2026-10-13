@@ -33,6 +33,10 @@ object LogMetadata {
     const val SESSION_LINKS = "Links followed"
     // #353: why a page visit failed, as a kind and the raw cause: "dead page, http(404)".
     const val LOAD_FAILURE = "Failure"
+    // #328: set when the action drew from the user's own searches or sites. The value is fixed,
+    // never the entry itself.
+    const val SOURCE = "Source"
+    const val SOURCE_CUSTOM = "Your list"
 
     private val gson = Gson()
     private val mapType = object : TypeToken<LinkedHashMap<String, String>>() {}.type

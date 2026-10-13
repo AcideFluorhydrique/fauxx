@@ -123,7 +123,11 @@ class AdPollutionModule @Inject constructor(
             actionType = actionType,
             category = category,
             detail = url,
-            metadata = metadata,
+            metadata = if (crawlEntry?.isCustom == true) {
+                LogMetadata.append(metadata, LogMetadata.SOURCE to LogMetadata.SOURCE_CUSTOM)
+            } else {
+                metadata
+            },
             success = success
         )
     }

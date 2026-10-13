@@ -73,6 +73,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     onNavigateToAbout: () -> Unit = {},
     onNavigateToSync: () -> Unit = {},
+    onNavigateToCustomPool: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -548,6 +549,19 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        // The user's own searches and sites (#328)
+        SettingsCard {
+            Text(stringResource(R.string.custom_pool_title), style = MaterialTheme.typography.titleSmall)
+            Text(
+                stringResource(R.string.custom_pool_settings_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = onNavigateToCustomPool) {
+                Text(stringResource(R.string.custom_pool_settings_button))
+            }
         }
 
         // Log retention (issue #73)

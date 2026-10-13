@@ -429,6 +429,37 @@
     <string name="settings_export_debug_logs_button">Экспортировать отладочные логи</string>
     <string name="settings_about_privacy_button">О приложении и приватность</string>
     <string name="settings_lan_sync_button">Синхронизация по локальной сети</string>
+    <!-- Your own searches and sites (#328) -->
+    <string name="custom_pool_title">Ваши запросы и сайты</string>
+    <string name="custom_pool_settings_description">Добавьте свои поисковые запросы и сайты, например местные новости и запросы на вашем языке, чтобы шум выглядел так, будто он идёт оттуда, где вы живёте.</string>
+    <string name="custom_pool_settings_button">Изменить ваши запросы и сайты</string>
+    <string name="custom_pool_intro">Встроенные запросы и сайты Fauxx охватывают английский, испанский, французский и русский языки. Добавьте свои, например местные новостные сайты и запросы на вашем языке, чтобы шум выглядел так, будто он идёт оттуда, где вы живёте. Каждая запись отдаёт вашему списку %1$d%% запросов или посещений сайтов, но не больше %2$d%%; остальное берётся из встроенных списков. Ваши записи проходят те же списки безопасности, что и встроенные, хранятся в зашифрованном виде на этом телефоне и не синхронизируются с другими вашими устройствами.</string>
+    <string name="custom_pool_tab_searches">Запросы</string>
+    <string name="custom_pool_tab_sites">Сайты</string>
+    <string name="custom_pool_input_searches">Поисковые запросы, по одному в строке</string>
+    <string name="custom_pool_input_sites">Адреса сайтов, по одному в строке</string>
+    <string name="custom_pool_placeholder_searches">погода завтра\nрезультаты местных выборов</string>
+    <string name="custom_pool_placeholder_sites">example-news.ru\nhttps://example.org/local</string>
+    <string name="custom_pool_add_button">Добавить</string>
+    <string name="custom_pool_count">%1$d из %2$d</string>
+    <string name="custom_pool_empty_searches">Запросов пока нет.</string>
+    <string name="custom_pool_empty_sites">Сайтов пока нет.</string>
+    <string name="custom_pool_clear_button">Удалить все</string>
+    <string name="custom_pool_clear_dialog_title">Удалить все записи?</string>
+    <string name="custom_pool_clear_dialog_body_searches">Все запросы из вашего списка будут удалены.</string>
+    <string name="custom_pool_clear_dialog_body_sites">Все сайты из вашего списка будут удалены.</string>
+    <string name="custom_pool_remove_content_desc">Удалить %1$s</string>
+    <string name="custom_pool_result_added">Добавлено: %1$d.</string>
+    <string name="custom_pool_result">Добавлено: %1$d. Не добавлено: %2$d.</string>
+    <string name="custom_pool_reason_too_long">Слишком длинно (предел для записи: %1$d).</string>
+    <string name="custom_pool_reason_invalid_characters">Содержит табуляцию или другие управляющие символы.</string>
+    <string name="custom_pool_reason_not_web_address">Это не веб-адрес. Подходят только адреса http:// и https://.</string>
+    <string name="custom_pool_reason_credentials">Адреса с именем пользователя или паролем не допускаются.</string>
+    <string name="custom_pool_reason_local_address">Адреса локальной сети (IP-адреса, localhost, .lan, .local и подобные) не допускаются.</string>
+    <string name="custom_pool_reason_blocked_search">Заблокировано списком безопасности Fauxx. Запросы, которые могут выглядеть как признак кризиса или привлечь внимание правоохранительных органов, никогда не отправляются.</string>
+    <string name="custom_pool_reason_blocked_site">Этот сайт есть в списке блокировки Fauxx.</string>
+    <string name="custom_pool_reason_duplicate">Уже есть в вашем списке.</string>
+    <string name="custom_pool_reason_limit">Список заполнен (предел: %1$d).</string>
 
     <!-- LAN sync screen (E13 #178) -->
     <string name="sync_enable_title">Включить синхронизацию по LAN</string>

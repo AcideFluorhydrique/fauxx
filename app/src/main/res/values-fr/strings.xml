@@ -368,6 +368,37 @@
     <string name="settings_export_debug_logs_button">Exporter les journaux de débogage</string>
     <string name="settings_about_privacy_button">À propos et politique de confidentialité</string>
     <string name="settings_lan_sync_button">Synchronisation LAN</string>
+    <!-- Your own searches and sites (#328) -->
+    <string name="custom_pool_title">Vos recherches et sites</string>
+    <string name="custom_pool_settings_description">Ajoutez vos propres recherches et sites web, comme des journaux locaux et des recherches dans votre langue, pour que le bruit semble venir de chez vous.</string>
+    <string name="custom_pool_settings_button">Modifier vos recherches et sites</string>
+    <string name="custom_pool_intro">Les recherches et sites intégrés de Fauxx couvrent l\'anglais, l\'espagnol, le français et le russe. Ajoutez les vôtres, comme des journaux locaux et des recherches dans votre langue, pour que le bruit semble venir de chez vous. Chaque entrée envoie %1$d %% des recherches ou des visites vers votre liste, jusqu\'à %2$d %% ; les listes intégrées couvrent le reste. Vos entrées passent par les mêmes listes de sécurité que les entrées intégrées, restent chiffrées sur ce téléphone et ne sont pas synchronisées avec vos autres appareils.</string>
+    <string name="custom_pool_tab_searches">Recherches</string>
+    <string name="custom_pool_tab_sites">Sites web</string>
+    <string name="custom_pool_input_searches">Recherches, une par ligne</string>
+    <string name="custom_pool_input_sites">Adresses web, une par ligne</string>
+    <string name="custom_pool_placeholder_searches">météo demain\nrésultats élections municipales</string>
+    <string name="custom_pool_placeholder_sites">journal-exemple.fr\nhttps://example.org/local</string>
+    <string name="custom_pool_add_button">Ajouter</string>
+    <string name="custom_pool_count">%1$d sur %2$d</string>
+    <string name="custom_pool_empty_searches">Aucune recherche pour l\'instant.</string>
+    <string name="custom_pool_empty_sites">Aucun site web pour l\'instant.</string>
+    <string name="custom_pool_clear_button">Tout retirer</string>
+    <string name="custom_pool_clear_dialog_title">Retirer toutes les entrées ?</string>
+    <string name="custom_pool_clear_dialog_body_searches">Toutes les recherches de votre liste seront retirées.</string>
+    <string name="custom_pool_clear_dialog_body_sites">Tous les sites web de votre liste seront retirés.</string>
+    <string name="custom_pool_remove_content_desc">Retirer %1$s</string>
+    <string name="custom_pool_result_added">Ajoutées : %1$d.</string>
+    <string name="custom_pool_result">Ajoutées : %1$d. Non ajoutées : %2$d.</string>
+    <string name="custom_pool_reason_too_long">Trop longue (limite par entrée : %1$d).</string>
+    <string name="custom_pool_reason_invalid_characters">Contient des tabulations ou d\'autres caractères de contrôle.</string>
+    <string name="custom_pool_reason_not_web_address">Ce n\'est pas une adresse web. Seules les adresses http:// et https:// fonctionnent.</string>
+    <string name="custom_pool_reason_credentials">Les adresses avec un nom d\'utilisateur ou un mot de passe ne sont pas autorisées.</string>
+    <string name="custom_pool_reason_local_address">Les adresses d\'un réseau local (adresses IP, localhost, .lan, .local et similaires) ne sont pas autorisées.</string>
+    <string name="custom_pool_reason_blocked_search">Bloquée par la liste de sécurité de Fauxx. Les termes qui pourraient ressembler à une détresse ou attirer l\'attention de la justice ne sont jamais recherchés.</string>
+    <string name="custom_pool_reason_blocked_site">Ce site est sur la liste de blocage de Fauxx.</string>
+    <string name="custom_pool_reason_duplicate">Déjà dans votre liste.</string>
+    <string name="custom_pool_reason_limit">La liste est pleine (limite : %1$d).</string>
 
     <!-- LAN sync screen (E13 #178) -->
     <string name="sync_enable_title">Activer la synchronisation LAN</string>

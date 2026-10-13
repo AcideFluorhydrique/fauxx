@@ -79,6 +79,11 @@ object TestDatabaseModule {
 
     @Provides
     @Singleton
+    fun provideCustomPoolDao(db: PhantomDatabase): com.fauxx.data.custompool.CustomPoolDao =
+        db.customPoolDao()
+
+    @Provides
+    @Singleton
     fun provideTinkKeyManager(@ApplicationContext context: Context): TinkKeyManager =
         TinkKeyManager(context)
 

@@ -122,6 +122,7 @@ class SettingsViewModel @Inject constructor(
     private val markovGenerator: MarkovQueryGenerator,
     private val circadianObserver: CircadianObserver,
     private val crawlHealth: com.fauxx.data.crawllist.UrlHealthTracker,
+    private val customPool: com.fauxx.data.custompool.CustomPoolRepository,
     private val webViewCapabilities: WebViewCapabilities = WebViewCapabilities.SYSTEM,
 ) : ViewModel() {
 
@@ -322,6 +323,8 @@ class SettingsViewModel @Inject constructor(
             // must not survive an explicit "delete all data" (privacy contract — audit fix).
             profileSnapshotDao.deleteAll()
             personaHistoryDao.deleteAll()
+            // The user's own searches and sites (#328) are personal data too.
+            customPool.clearAll()
             // Wipe the learned daily-rhythm histogram, in memory and on disk, so the
             // behavioral profile doesn't survive a "delete all data" (E10 #177).
             circadianObserver.clear()

@@ -96,7 +96,8 @@ class CookieSaturationModule @Inject constructor(
                 if (loadFailure != null) Timber.d("Cookie harvest load failed [${loadFailure.describe()}]")
                 loadFailure == null
             } catch (e: Exception) {
-                Timber.w("Failed to load ${entry.url}: ${e.message}")
+                // A user-added site (#328) stays out of the debug log; built-in URLs are corpus data.
+                Timber.w("Failed to load ${if (entry.isCustom) "a custom site" else entry.url}: ${e.message}")
                 false
             } finally {
                 webViewPool.release(webView)
@@ -108,7 +109,11 @@ class CookieSaturationModule @Inject constructor(
             actionType = ActionType.COOKIE_HARVEST,
             category = category,
             detail = entry.url,
-            metadata = metadata,
+            metadata = if (entry.isCustom) {
+                LogMetadata.append(metadata, LogMetadata.SOURCE to LogMetadata.SOURCE_CUSTOM)
+            } else {
+                metadata
+            },
             success = success
         )
     }

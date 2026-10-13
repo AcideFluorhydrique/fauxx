@@ -61,6 +61,7 @@ import com.fauxx.ui.screens.FaqScreen
 import com.fauxx.ui.screens.LogScreen
 import com.fauxx.ui.screens.ModulesScreen
 import com.fauxx.ui.screens.AboutScreen
+import com.fauxx.ui.screens.CustomPoolScreen
 import com.fauxx.ui.screens.SettingsScreen
 import com.fauxx.ui.screens.TargetingScreen
 import com.fauxx.ui.sync.SyncScreen
@@ -82,6 +83,7 @@ sealed class Screen(val route: String, @androidx.annotation.StringRes val labelR
     object About : Screen("about", R.string.about_title)
     object Faq : Screen("faq", R.string.faq_title)
     object Sync : Screen("sync", R.string.settings_lan_sync_button)
+    object CustomPool : Screen("custom_pool", R.string.custom_pool_title)
 }
 
 private val bottomNavItems = listOf(
@@ -163,13 +165,17 @@ fun FauxxNavGraph(showOnboarding: Boolean) {
                 composable(Screen.Settings.route) {
                     SettingsScreen(
                         onNavigateToAbout = { navController.navigate(Screen.About.route) },
-                        onNavigateToSync = { navController.navigate(Screen.Sync.route) }
+                        onNavigateToSync = { navController.navigate(Screen.Sync.route) },
+                        onNavigateToCustomPool = { navController.navigate(Screen.CustomPool.route) }
                     )
                 }
                 composable(Screen.About.route) {
                     AboutScreen(onBack = { navController.popBackStack() })
                 }
                 composable(Screen.Sync.route) { SyncScreen() }
+                composable(Screen.CustomPool.route) {
+                    CustomPoolScreen(onBack = { navController.popBackStack() })
+                }
                 composable(Screen.Faq.route) {
                     FaqScreen(onBack = { navController.popBackStack() })
                 }

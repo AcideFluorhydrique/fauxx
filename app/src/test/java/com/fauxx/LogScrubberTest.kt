@@ -149,6 +149,13 @@ class LogScrubberTest {
     }
 
     @Test
+    fun `scrubForExport coarsens a user-added search the same way (#328)`() {
+        val detail = "${com.fauxx.engine.modules.SearchPoisonModule.CUSTOM_TAG} Wetter Leipzig morgen · via google"
+        val result = LogScrubber.scrubForExport(ActionType.SEARCH_QUERY, detail)
+        assertEquals("[CUSTOM] <3-word query> · via google", result)
+    }
+
+    @Test
     fun `scrubForExport leaves a blocked search detail unchanged`() {
         // The blocked path detail is a fixed safety string, not user content, and has no
         // ` via ENGINE` suffix, so it is not coarsened.

@@ -62,11 +62,12 @@ class SettingsViewModelTest {
     private val markovGenerator: MarkovQueryGenerator = mockk(relaxed = true)
     private val circadianObserver: CircadianObserver = mockk(relaxed = true)
     private val crawlHealth: com.fauxx.data.crawllist.UrlHealthTracker = mockk(relaxed = true)
+    private val customPool: com.fauxx.data.custompool.CustomPoolRepository = mockk(relaxed = true)
 
     private fun viewModel() = SettingsViewModel(
         profileRepo, actionLogDao, demographicDao, platformDao, personaHistoryDao,
         profileSnapshotDao, targetingEngine, encryptedFileTree, localeManager,
-        markovGenerator, circadianObserver, crawlHealth
+        markovGenerator, circadianObserver, crawlHealth, customPool
     )
 
     // --- #227 custom DNS ---
@@ -371,5 +372,7 @@ class SettingsViewModelTest {
         // E10 (#177): the learned daily-rhythm histogram is part of the trail wipe.
         coVerify { circadianObserver.clear() }
         coVerify { crawlHealth.clear() }
+        // #328: the user's own searches and sites are personal data and go too.
+        coVerify { customPool.clearAll() }
     }
 }

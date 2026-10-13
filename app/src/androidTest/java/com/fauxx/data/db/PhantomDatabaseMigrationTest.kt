@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
  * Exercises [PhantomDatabase]'s real migrations under SQLCipher on a device — the path that
  * actually runs on a user's phone when they update the app. A broken migration here is silent
  * data loss or an open-time crash for every existing install, so this verifies both that the
- * 1->2->3->4->5->6->7 chain applies its schema changes AND that rows written before the update survive it.
+ * 1->2->...->9 chain applies its schema changes AND that rows written before the update survive it.
  *
  * Room's exported schemas only include 3.json, so [androidx.room.testing.MigrationTestHelper]
  * (which needs 1.json/2.json to stand up an old DB) can't be used. Instead we hand-seed an
@@ -47,12 +47,12 @@ class PhantomDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate1To7_preservesSeededRows_andAppliesSchemaChanges() {
+    fun migrate1To9_preservesSeededRows_andAppliesSchemaChanges() {
         seedEncryptedV1Database()
 
         val db = buildRoomDatabase()
         try {
-            // First access runs the 1->2->3->4->5->6->7 migration chain and validates against v7.
+            // First access runs the 1->...->9 migration chain and validates against v9.
             val sdb = db.openHelper.writableDatabase
 
             // Rows written at v1 must survive the migration.
@@ -116,13 +116,24 @@ class PhantomDatabaseMigrationTest {
             ).use { c ->
                 assertTrue("MIGRATION_7_8 must create synced_personas", c.moveToFirst())
             }
+            // MIGRATION_8_9 created the user's own searches and sites, with its unique index (#328).
+            sdb.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='custom_pool_entries'"
+            ).use { c ->
+                assertTrue("MIGRATION_8_9 must create custom_pool_entries", c.moveToFirst())
+            }
+            sdb.query(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='index_custom_pool_entries_kind_value'"
+            ).use { c ->
+                assertTrue("MIGRATION_8_9 must create the unique (kind, value) index", c.moveToFirst())
+            }
         } finally {
             db.close()
         }
     }
 
     @Test
-    fun freshCreateAtV7_roundTripsThroughSqlcipher() {
+    fun freshCreateAtV9_roundTripsThroughSqlcipher() {
         val db = buildRoomDatabase()
         try {
             val sdb = db.openHelper.writableDatabase
@@ -163,6 +174,10 @@ class PhantomDatabaseMigrationTest {
             sdb.query("SELECT name FROM sqlite_master WHERE type='table' AND name='synced_personas'").use { c ->
                 assertTrue("fresh create must include synced_personas", c.moveToFirst())
             }
+            // A fresh create at v9 ships the custom pool table directly (#328).
+            sdb.query("SELECT name FROM sqlite_master WHERE type='table' AND name='custom_pool_entries'").use { c ->
+                assertTrue("fresh create must include custom_pool_entries", c.moveToFirst())
+            }
         } finally {
             db.close()
         }
@@ -171,7 +186,7 @@ class PhantomDatabaseMigrationTest {
     private fun buildRoomDatabase(): PhantomDatabase =
         Room.databaseBuilder(context, PhantomDatabase::class.java, TEST_DB)
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
 
     /**
