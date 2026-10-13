@@ -2,10 +2,14 @@ package com.fauxx.engine.modules
 
 import timber.log.Timber
 import com.fauxx.data.crawllist.CrawlListManager
+import com.fauxx.data.crawllist.CrawlEntry
 import com.fauxx.data.db.ActionLogEntity
+import com.fauxx.data.db.LogMetadata
 import com.fauxx.data.model.ActionType
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.PoisonProfileRepository
+import com.fauxx.engine.webview.CrawlOutcomeSink
+import com.fauxx.engine.webview.PageLoadFailure
 import com.fauxx.engine.webview.PhantomWebViewPool
 import com.fauxx.engine.webview.SYNTHETIC_WEBVIEW_HEADERS
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +39,8 @@ class AdPollutionModule @Inject constructor(
     private val webViewPool: PhantomWebViewPool,
     private val profileRepo: PoisonProfileRepository,
     private val random: Random = Random.Default,
+    // #353: remembers crawl URLs that keep failing so CrawlListManager stops picking them.
+    private val crawlOutcomes: CrawlOutcomeSink = CrawlOutcomeSink.NONE,
 ) : Module {
 
     override suspend fun start() {
@@ -51,6 +57,7 @@ class AdPollutionModule @Inject constructor(
         val isDashboardVisit = random.nextFloat() < 0.10f
         val actionType = ActionType.PAGE_VISIT
 
+        var crawlEntry: CrawlEntry? = null
         val url = if (isDashboardVisit) {
             AD_DASHBOARD_URLS.random(random)
         } else {
@@ -68,6 +75,7 @@ class AdPollutionModule @Inject constructor(
                 delay(pending.waitMs)
                 crawlListManager.markVisited(pending.entry.domain)
             }
+            crawlEntry = pending.entry
             pending.entry.url
         }
 
@@ -80,19 +88,26 @@ class AdPollutionModule @Inject constructor(
             null
         }
         var metadata: String? = null
+        var visited = false
+        var failure: PageLoadFailure? = null
         val success = if (webView == null) {
             false
         } else {
             try {
                 withContext(Dispatchers.Main) { webView.loadUrl(url, SYNTHETIC_WEBVIEW_HEADERS) }
                 delay(random.nextLong(3_000L, 15_000L))
-                // #73: read page metadata on Main, before release() wipes the document.
-                metadata = withContext(Dispatchers.Main) { webViewPool.captureMetadata(webView, url) }
                 // #268: an error page still "finishes" loading. A main-frame failure (DNS blocked,
-                // refused, HTTP 4xx/5xx) is not a successful visit, so don't log it as one.
-                val loadError = webViewPool.lastLoadError(webView)
-                if (loadError != null) Timber.d("Ad page load failed [$loadError]")
-                loadError == null
+                // refused, HTTP 4xx/5xx) is not a successful visit, so don't log it as one. #353:
+                // judged on the latest navigation, so a passed bot check counts as the visit it is.
+                val loadFailure = webViewPool.lastLoadFailure(webView)
+                failure = loadFailure
+                visited = true
+                // #73: read page metadata on Main, before release() wipes the document.
+                metadata = withContext(Dispatchers.Main) {
+                    webViewPool.captureMetadata(webView, url, LogMetadata.LOAD_FAILURE to loadFailure?.describe())
+                }
+                if (loadFailure != null) Timber.d("Ad page load failed [${loadFailure.describe()}]")
+                loadFailure == null
             } catch (e: Exception) {
                 Timber.w("Ad page load failed: ${e.message}")
                 false
@@ -100,6 +115,9 @@ class AdPollutionModule @Inject constructor(
                 webViewPool.release(webView)
             }
         }
+        // #353: only crawl-list pages are remembered; the dashboards are a fixed, short list.
+        val visitedEntry = crawlEntry
+        if (visited && visitedEntry != null) crawlOutcomes.report(visitedEntry, failure)
 
         return ActionLogEntity(
             actionType = actionType,

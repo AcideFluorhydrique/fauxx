@@ -31,6 +31,8 @@ object LogMetadata {
     // E5 (#175) intent-chain search sessions: counts only, never query/link text.
     const val SESSION_QUERIES = "Session queries"
     const val SESSION_LINKS = "Links followed"
+    // #353: why a page visit failed, as a kind and the raw cause: "dead page, http(404)".
+    const val LOAD_FAILURE = "Failure"
 
     private val gson = Gson()
     private val mapType = object : TypeToken<LinkedHashMap<String, String>>() {}.type

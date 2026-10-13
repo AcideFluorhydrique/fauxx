@@ -21,6 +21,14 @@ interface Module {
     fun isEnabled(): Boolean
 
     /**
+     * True while an enabled module has nothing it may do right now, so the engine dispatches
+     * another module instead (#353: every enabled search engine is backing off after a bot
+     * check). Runtime only; never a settings change. Phrased as "held back" rather than
+     * "available" so a relaxed test double (false) still dispatches.
+     */
+    fun isHeldBack(): Boolean = false
+
+    /**
      * Execute a single action targeting [category].
      * Must be called after [start].
      * Returns a pre-filled [ActionLogEntity] that the engine will persist (write-ahead).

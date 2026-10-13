@@ -51,10 +51,10 @@ class AppSignalModuleTest {
     private val context: Context = mockk(relaxed = true)
     private val profileRepo: PoisonProfileRepository = mockk(relaxed = true)
     private val webView: WebView = mockk(relaxed = true)
-    // #268: modules now consult lastLoadError() to decide success. A relaxed mock would hand back
-    // a non-null string, i.e. "this load failed", so the clean-load default has to be explicit.
+    // #268: modules now consult lastLoadFailure() to decide success. A relaxed mock would hand back
+    // a non-null failure, i.e. "this load failed", so the clean-load default has to be explicit.
     private val webViewPool: PhantomWebViewPool = mockk<PhantomWebViewPool>(relaxed = true).apply {
-        every { lastLoadError(any()) } returns null
+        every { lastLoadFailure(any()) } returns null
     }
     private val localeManager: LocaleManager = mockk(relaxed = true)
     private val noPersonaLayer: PersonaRotationLayer = mockk {

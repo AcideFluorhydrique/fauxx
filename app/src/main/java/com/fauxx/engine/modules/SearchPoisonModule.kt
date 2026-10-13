@@ -15,6 +15,9 @@ import com.fauxx.locale.SupportedLocale
 import com.fauxx.targeting.layer1.CustomInterestMapper
 import com.fauxx.targeting.layer1.DemographicProfileDao
 import com.fauxx.data.crawllist.DomainBlocklist
+import com.fauxx.data.crawllist.SearchEngineHealth
+import com.fauxx.engine.webview.LoadFailureKind
+import com.fauxx.engine.webview.PageLoadFailure
 import com.fauxx.engine.webview.PhantomWebViewPool
 import com.fauxx.engine.webview.SYNTHETIC_WEBVIEW_HEADERS
 import com.fauxx.locale.AcceptLanguageVariants
@@ -117,6 +120,41 @@ internal fun activeSearchEngines(
 }
 
 /**
+ * The engines a search may use right now (#353): the user's [allowed] engines minus those
+ * backing off after a bot check. Empty means "search nothing for now"; it never falls back to an
+ * engine that is backing off, since another search there is exactly what the backoff prevents.
+ */
+internal fun selectableSearchEngines(allowed: List<String>, heldBack: (String) -> Boolean): List<String> =
+    allowed.filterNot { runCatching { heldBack(it) }.getOrDefault(false) }
+
+/**
+ * Recognizes the pages search engines show suspected automation (#353), by the URL the WebView
+ * ended on. Status codes alone miss them: Google's /sorry page is reached through a 302 and can
+ * answer 200, and Yandex's CAPTCHA is a plain redirect.
+ */
+internal object SearchChallenge {
+    fun isChallengeUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+        val host = uri.host?.lowercase() ?: return false
+        val path = uri.rawPath.orEmpty().lowercase()
+        return when {
+            // google.com/sorry/index, and the country domains (google.co.uk, google.fr, ...).
+            isGoogleHost(host) -> path.startsWith("/sorry")
+            host == "yandex.com" || host.endsWith(".yandex.com") || host.startsWith("yandex.") ->
+                path.startsWith("/showcaptcha") || path.startsWith("/checkcaptcha")
+            host == "bing.com" || host.endsWith(".bing.com") -> path.startsWith("/turing/captcha")
+            else -> false
+        }
+    }
+
+    private fun isGoogleHost(host: String): Boolean {
+        val labels = host.removePrefix("www.").split('.')
+        return labels.firstOrNull() == "google" && labels.size in 2..3
+    }
+}
+
+/**
  * Executes synthetic search activity as intent-chain SESSIONS (E5 #175): one onAction
  * call runs a whole session — a goal query, then in-topic refinements built from
  * [SearchRefinements] (so successive queries narrow the same subject instead of being
@@ -165,6 +203,8 @@ class SearchPoisonModule @Inject constructor(
     private val crawlListManager: com.fauxx.data.crawllist.CrawlListManager,
     private val clock: com.fauxx.util.Clock = com.fauxx.util.SystemClockImpl(),
     private val random: Random = Random.Default,
+    // #353: engines that answered with a bot check are skipped for a while.
+    private val engineHealth: SearchEngineHealth = SearchEngineHealth.NONE,
 ) : Module {
 
     override suspend fun start() {
@@ -197,6 +237,17 @@ class SearchPoisonModule @Inject constructor(
 
     override fun isEnabled(): Boolean = profileRepo.getProfile().searchPoisonEnabled
 
+    /**
+     * #353: every engine the user allows is backing off after a bot check. The engine then
+     * dispatches other modules instead of sending another search to a CAPTCHA, and comes back
+     * here once a hold runs out.
+     */
+    override fun isHeldBack(): Boolean = selectableSearchEngines(allowedEngines(), engineHealth::isEngineHeldBack).isEmpty()
+
+    /** The user's engine opt-outs (issue #281) applied; never changed by the backoff. */
+    private fun allowedEngines(): List<String> =
+        activeSearchEngines(SEARCH_ENGINE_IDS, profileRepo.getProfile().excludedSearchEngines)
+
     override suspend fun onAction(category: CategoryPool): ActionLogEntity {
         // Session goal. Use the grammar generator 60% of the time for natural-looking, per-install
         // styled queries (E5 #179); the rest are raw corpus picks. The grammar wraps Markov/corpus
@@ -225,12 +276,19 @@ class SearchPoisonModule @Inject constructor(
         }
 
         val locale = localeManager.currentLocale
-        // Honor the user's engine opt-outs (issue #281).
-        val allowed = activeSearchEngines(
-            SEARCH_ENGINE_IDS,
-            profileRepo.getProfile().excludedSearchEngines
-        ).toSet()
-        val engine = SEARCH_ENGINES.filter { it.name in allowed }.random(random)
+        // Honor the user's engine opt-outs (issue #281), then leave out engines backing off after
+        // a bot check (#353). The engine loop does not dispatch here while every engine is held
+        // back; this covers a hold that started in between.
+        val selectable = selectableSearchEngines(allowedEngines(), engineHealth::isEngineHeldBack).toSet()
+        if (selectable.isEmpty()) {
+            return ActionLogEntity(
+                actionType = ActionType.SEARCH_QUERY,
+                category = category,
+                detail = "[$category] search skipped: every enabled engine is backing off after a bot check",
+                success = false,
+            )
+        }
+        val engine = SEARCH_ENGINES.filter { it.name in selectable }.random(random)
         val goalUrl = engine.build(java.net.URLEncoder.encode(goal, "UTF-8"), locale)
         // Engine name suffix surfaces which SERP each search actually hit, so the user
         // can verify newly-added engines (e.g. Yandex per #24) are actually firing.
@@ -286,6 +344,7 @@ class SearchPoisonModule @Inject constructor(
             null
         }
         var metadata: String? = null
+        var goalFailure: PageLoadFailure? = null
         var queriesDispatched = 0
         var linksFollowed = 0
         val success = if (webView == null) {
@@ -293,7 +352,10 @@ class SearchPoisonModule @Inject constructor(
         } else {
             try {
                 val deadline = clock.currentTimeMillis() + SESSION_BUDGET_MS
-                val goalOk = loadWithDwell(webView, goalUrl, headers, QUERY_DWELL_MS)
+                val goalLoad = loadWithDwell(webView, goalUrl, headers, QUERY_DWELL_MS)
+                goalFailure = goalLoad.failure
+                noteEngineOutcome(engine.name, goalLoad)
+                val goalOk = goalLoad.ok
                 if (goalOk) {
                     queriesDispatched = 1
 
@@ -311,6 +373,7 @@ class SearchPoisonModule @Inject constructor(
                         }
                     }
 
+                    var botChecked = false
                     for (refinement in refinements) {
                         if (clock.currentTimeMillis() > deadline) break
                         // Final safety gate on EVERY query in the chain. A blocked
@@ -322,8 +385,15 @@ class SearchPoisonModule @Inject constructor(
                         }
                         val url = engine.build(java.net.URLEncoder.encode(refinement, "UTF-8"), locale)
                         if (blocklist.isUrlBlocked(url)) continue
-                        if (loadWithDwell(webView, url, headers, QUERY_DWELL_MS)) {
+                        val load = loadWithDwell(webView, url, headers, QUERY_DWELL_MS)
+                        if (load.ok) {
                             queriesDispatched++
+                        } else if (load.botCheck) {
+                            // #353: stop the session at the first bot check; every further
+                            // query or click would land on the same challenge.
+                            noteEngineOutcome(engine.name, load)
+                            botChecked = true
+                            break
                         }
                     }
 
@@ -334,7 +404,7 @@ class SearchPoisonModule @Inject constructor(
                     // the SERP's own anchor, so its instrumentation and referrer
                     // semantics are genuine, and PhantomWebViewClient re-gates the
                     // resulting navigation.
-                    if (maxLinks > 0 && clock.currentTimeMillis() < deadline) {
+                    if (!botChecked && maxLinks > 0 && clock.currentTimeMillis() < deadline) {
                         val hrefs = collectSerpLinks(webView)
                         val links = SerpLinkSelector.select(
                             hrefs, random,
@@ -372,18 +442,43 @@ class SearchPoisonModule @Inject constructor(
             actionType = ActionType.SEARCH_QUERY,
             category = category,
             detail = detail,
-            metadata = metadata ?: LogMetadata.toJson(LogMetadata.SEARCH_ENGINE to engine.name),
+            metadata = metadata ?: LogMetadata.toJson(
+                LogMetadata.SEARCH_ENGINE to engine.name,
+                LogMetadata.LOAD_FAILURE to goalFailure?.describe(),
+            ),
             success = success,
         )
     }
 
-    /** Load [url] in [webView] and dwell like a human scanning it. False on timeout/throw. */
+    /**
+     * One SERP load's outcome. [failure] is null when the page loaded, or when the load threw or
+     * timed out (then [ok] is false with no failure to show).
+     */
+    private class SearchLoad(val ok: Boolean, val failure: PageLoadFailure?) {
+        val botCheck: Boolean get() = failure?.kind == LoadFailureKind.BOT_WALL
+    }
+
+    /**
+     * #353: a bot check holds the engine back; a clean load clears it. Nothing else counts: an
+     * offline device, a DNS blocker (Yandex is often filtered by name) or Fauxx's own DNS proxy
+     * fail as network or local errors, never as a bot check, so they cannot hold an engine back.
+     */
+    private fun noteEngineOutcome(engineId: String, load: SearchLoad) {
+        runCatching {
+            when {
+                load.botCheck -> engineHealth.recordEngineBotCheck(engineId)
+                load.ok -> engineHealth.recordEngineSuccess(engineId)
+            }
+        }.onFailure { Timber.w("Search engine health update failed: ${it.javaClass.simpleName}") }
+    }
+
+    /** Load [url] in [webView] and dwell like a human scanning it. Not ok on timeout/throw. */
     private suspend fun loadWithDwell(
         webView: android.webkit.WebView,
         url: String,
         headers: Map<String, String>,
         dwellMs: LongRange,
-    ): Boolean = try {
+    ): SearchLoad = try {
         withTimeoutOrNull(SEARCH_LOAD_TIMEOUT_MS) {
             // #268: clear before navigating so this reflects THIS load, not an earlier
             // refinement's failure on the same acquired WebView.
@@ -392,19 +487,29 @@ class SearchPoisonModule @Inject constructor(
             delay(random.nextLong(dwellMs.first, dwellMs.last + 1))
             // #268: a DNS-blocked or refused load still "finishes" — on an error page. Treat a
             // main-frame error as a failed load instead of reporting the action as a success.
-            val loadError = webViewPool.lastLoadError(webView)
-            if (loadError != null) {
-                Timber.d("Search load failed [$loadError]")
-                false
-            } else {
-                true
+            // #353: also judge by where the WebView ended up. Google's /sorry page arrives through
+            // a 302 and can answer 200, so the status alone does not always say "bot check".
+            val finalUrl = withTimeoutOrNull(METADATA_TIMEOUT_MS) {
+                withContext(Dispatchers.Main) { runCatching { webView.url }.getOrNull() }
             }
-        } ?: false
+            val recorded = webViewPool.lastLoadFailure(webView)
+            val failure = if (SearchChallenge.isChallengeUrl(finalUrl) && recorded?.kind != LoadFailureKind.BOT_WALL) {
+                PageLoadFailure(LoadFailureKind.BOT_WALL, "challenge page")
+            } else {
+                recorded
+            }
+            if (failure != null) {
+                Timber.d("Search load failed [${failure.describe()}]")
+                SearchLoad(ok = false, failure = failure)
+            } else {
+                SearchLoad(ok = true, failure = null)
+            }
+        } ?: SearchLoad(ok = false, failure = null)
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
     } catch (e: Exception) {
         Timber.w("Search WebView load failed: ${e.message}")
-        false
+        SearchLoad(ok = false, failure = null)
     }
 
     /** Harvest anchor hrefs from the loaded SERP; empty on timeout or eval failure. */

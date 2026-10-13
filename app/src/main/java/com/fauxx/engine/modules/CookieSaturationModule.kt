@@ -3,9 +3,12 @@ package com.fauxx.engine.modules
 import timber.log.Timber
 import com.fauxx.data.crawllist.CrawlListManager
 import com.fauxx.data.db.ActionLogEntity
+import com.fauxx.data.db.LogMetadata
 import com.fauxx.data.model.ActionType
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.PoisonProfileRepository
+import com.fauxx.engine.webview.CrawlOutcomeSink
+import com.fauxx.engine.webview.PageLoadFailure
 import com.fauxx.engine.webview.PhantomWebViewPool
 import com.fauxx.engine.webview.SYNTHETIC_WEBVIEW_HEADERS
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +30,8 @@ class CookieSaturationModule @Inject constructor(
     private val webViewPool: PhantomWebViewPool,
     private val profileRepo: PoisonProfileRepository,
     private val random: Random = Random.Default,
+    // #353: remembers crawl URLs that keep failing so CrawlListManager stops picking them.
+    private val crawlOutcomes: CrawlOutcomeSink = CrawlOutcomeSink.NONE,
 ) : Module {
 
     override suspend fun start() {
@@ -70,19 +75,26 @@ class CookieSaturationModule @Inject constructor(
             null
         }
         var metadata: String? = null
+        var visited = false
+        var failure: PageLoadFailure? = null
         val success = if (webView == null) {
             false
         } else {
             try {
                 withContext(Dispatchers.Main) { webView.loadUrl(entry.url, SYNTHETIC_WEBVIEW_HEADERS) }
                 delay(dwellMs)
-                // #73: read page metadata on Main, before release() wipes the document.
-                metadata = withContext(Dispatchers.Main) { webViewPool.captureMetadata(webView, entry.url) }
                 // #268: an error page still "finishes" loading. A main-frame failure (DNS blocked,
-                // refused, HTTP 4xx/5xx) is not a successful visit, so don't log it as one.
-                val loadError = webViewPool.lastLoadError(webView)
-                if (loadError != null) Timber.d("Cookie harvest load failed [$loadError]")
-                loadError == null
+                // refused, HTTP 4xx/5xx) is not a successful visit, so don't log it as one. #353:
+                // judged on the latest navigation, so a passed bot check counts as the visit it is.
+                val loadFailure = webViewPool.lastLoadFailure(webView)
+                failure = loadFailure
+                visited = true
+                // #73: read page metadata on Main, before release() wipes the document.
+                metadata = withContext(Dispatchers.Main) {
+                    webViewPool.captureMetadata(webView, entry.url, LogMetadata.LOAD_FAILURE to loadFailure?.describe())
+                }
+                if (loadFailure != null) Timber.d("Cookie harvest load failed [${loadFailure.describe()}]")
+                loadFailure == null
             } catch (e: Exception) {
                 Timber.w("Failed to load ${entry.url}: ${e.message}")
                 false
@@ -90,6 +102,7 @@ class CookieSaturationModule @Inject constructor(
                 webViewPool.release(webView)
             }
         }
+        if (visited) crawlOutcomes.report(entry, failure)
 
         return ActionLogEntity(
             actionType = ActionType.COOKIE_HARVEST,
