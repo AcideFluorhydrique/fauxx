@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.annotation.VisibleForTesting
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.work.Constraints
@@ -185,5 +186,11 @@ class ResumeScheduler @Inject constructor(
                     .onFailure { Timber.w(it, "ResumeScheduler: could not record the pending resume") }
             }
         }
+    }
+
+    /** Suspends until every record queued before this call has been written. For tests. */
+    @VisibleForTesting
+    internal suspend fun awaitRecorded() {
+        recordScope.launch { recordLock.withLock { } }.join()
     }
 }

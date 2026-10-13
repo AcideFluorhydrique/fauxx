@@ -14,7 +14,6 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import com.fauxx.di.PreferenceKeys
 import com.fauxx.di.fauxxDataStore
 import com.fauxx.engine.EngineState
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -173,20 +172,17 @@ class ResumeLoopTest {
         val resumeAt = System.currentTimeMillis() + 60_000
 
         scheduler.schedule(ResumeSpec.AtTime(resumeAt), EngineState.PAUSED_QUIET_HOURS)
-        assertEquals(
-            PendingResume(EngineState.PAUSED_QUIET_HOURS, resumeAt),
-            withTimeout(5_000) { scheduler.pendingResume.first { it != null } },
-        )
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertEquals(PendingResume(EngineState.PAUSED_QUIET_HOURS, resumeAt), scheduler.pendingResume.first())
 
         // A constraint resume has no time; the new record replaces the old one whole.
         scheduler.schedule(ResumeSpec.WhenConstraintMet(batteryNotLow = true), EngineState.PAUSED_BATTERY)
-        assertEquals(
-            PendingResume(EngineState.PAUSED_BATTERY, null),
-            withTimeout(5_000) { scheduler.pendingResume.first { it?.pausedState == EngineState.PAUSED_BATTERY } },
-        )
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertEquals(PendingResume(EngineState.PAUSED_BATTERY, null), scheduler.pendingResume.first())
 
         scheduler.cancel()
-        assertNull(withTimeout(5_000) { scheduler.pendingResume.first { it == null } })
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertNull(scheduler.pendingResume.first())
     }
 
     @Test
@@ -198,11 +194,8 @@ class ResumeLoopTest {
             scheduler.schedule(ResumeSpec.AtTime(System.currentTimeMillis() + 60_000), EngineState.PAUSED_QUIET_HOURS)
             scheduler.cancel()
         }
-        // Wait for a marker queued behind every write above, then check what they left.
-        scheduler.schedule(ResumeSpec.WhenConstraintMet(batteryNotLow = true), EngineState.PAUSED_BATTERY)
-        scheduler.cancel()
-        withTimeout(5_000) { scheduler.pendingResume.first { it == null } }
-        delay(200)
+        // Wait for every write above to land, then check what they left.
+        withTimeout(30_000) { scheduler.awaitRecorded() }
         assertNull(scheduler.pendingResume.first())
     }
 
