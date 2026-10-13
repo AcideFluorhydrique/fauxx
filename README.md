@@ -384,6 +384,16 @@ To use it:
 
 If the import says it couldn't find an ad-interest file, the most common cause is that personalized ads are turned **off** in your Google or Facebook settings, so the platform keeps no ad profile to export. Turn personalized ads on, let a profile accrue, then export again.
 
+### Why doesn't Fauxx's activity show up in my Google account or My Ad Center?
+
+Because Fauxx is never signed in to your accounts, on purpose. It browses in its own sandboxed WebView with no access to your Google login. Google's terms restrict automated use of its services, and sending Fauxx's decoys through your real account could get that account flagged or suspended.
+
+What you see in My Ad Center, My Activity and Google Takeout comes mostly from what you do while signed in: your searches, YouTube, and Chrome and Android activity tied to your account. Fauxx's activity is not tied to your account, so it will not appear there, and your Google ad interests usually will not change because of it. For the same reason, Profile drift on the Dashboard may barely move for Google.
+
+Fauxx aims at the profiling that needs no login: third-party ad networks and trackers, data brokers, and anything that recognises you by your device, IP address or DNS lookups (see [Threat Model](#threat-model)). Those profiles are not shown to you, so there is no page where you can watch them change.
+
+The Layer 2 import works the other way round. It tells Fauxx what Google and Facebook already think you like, so the decoy personas steer away from your real interests instead of resembling you. It is a baseline for the noise, not a score for whether Fauxx is working.
+
 ### Why does Fauxx sometimes stop and show a "Tap to resume protection" notification?
 
 When Fauxx pauses for a long stretch, it releases its foreground service rather than sit idle holding the slot, and posts a one-tap notification so you can resume when you next pick up your phone.
