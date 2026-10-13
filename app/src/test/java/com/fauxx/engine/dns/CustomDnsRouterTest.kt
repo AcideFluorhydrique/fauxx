@@ -320,6 +320,7 @@ class CustomDnsRouterTest {
         profile.value = doh().copy(dnsStrict = true)
         router.start()
         val firstPort = override.port!!
+        val first = made.toList().single { (p, _) -> p.port == firstPort }.first
 
         override.accept = false // a 5 s confirmation timeout looks exactly like this
         profile.value = doh(provider = DohPresets.CLOUDFLARE.id).copy(dnsStrict = true)
@@ -332,7 +333,9 @@ class CustomDnsRouterTest {
         override.accept = true
         withTimeout(5_000) { while (router.browsingBlockedReason() != null) delay(20) }
         assertTrue("the retry put a fresh proxy in place", override.port != firstPort)
-        assertTrue("and only then retired the old one", !isServing(firstPort))
+        // Checked on the proxy itself: once its port is free, any other listener in the test JVM
+        // can be handed the same number, so probing the port could see a stranger answer.
+        assertTrue("and only then retired the old one", first.awaitWorkersStopped(5_000))
         assertTrue("clear" !in override.calls)
     }
 
