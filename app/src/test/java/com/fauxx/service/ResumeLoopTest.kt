@@ -13,7 +13,10 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.fauxx.di.PreferenceKeys
 import com.fauxx.di.fauxxDataStore
+import com.fauxx.engine.EngineState
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -158,6 +161,54 @@ class ResumeLoopTest {
             "a user who turned the engine off must not be nagged to resume",
             shadowOf(notificationManager()).getNotification(RESUME_NOTIFICATION_ID),
         )
+    }
+
+    @Test
+    fun `schedule records the pending resume for the dashboard and cancel clears it`() = runBlocking {
+        // The engine is destroyed once it resigns, so this record is all the dashboard has to say
+        // "paused, back at 7:00" instead of "ACTIVE, engine stopped" (#346).
+        context.fauxxDataStore.writePendingResume(null)
+        val scheduler = ResumeScheduler(context)
+        val resumeAt = System.currentTimeMillis() + 60_000
+
+        scheduler.schedule(ResumeSpec.AtTime(resumeAt), EngineState.PAUSED_QUIET_HOURS)
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertEquals(PendingResume(EngineState.PAUSED_QUIET_HOURS, resumeAt), scheduler.pendingResume.first())
+
+        // A constraint resume has no time; the new record replaces the old one whole.
+        scheduler.schedule(ResumeSpec.WhenConstraintMet(batteryNotLow = true), EngineState.PAUSED_BATTERY)
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertEquals(PendingResume(EngineState.PAUSED_BATTERY, null), scheduler.pendingResume.first())
+
+        scheduler.cancel()
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertNull(scheduler.pendingResume.first())
+    }
+
+    @Test
+    fun `a cancel straight after a schedule never leaves the resume recorded`() = runBlocking {
+        // The writes are async (cancel runs on the main thread), so they must land in call order.
+        context.fauxxDataStore.writePendingResume(null)
+        val scheduler = ResumeScheduler(context)
+        repeat(20) {
+            scheduler.schedule(ResumeSpec.AtTime(System.currentTimeMillis() + 60_000), EngineState.PAUSED_QUIET_HOURS)
+            scheduler.cancel()
+        }
+        // Wait for every write above to land, then check what they left.
+        withTimeout(30_000) { scheduler.awaitRecorded() }
+        assertNull(scheduler.pendingResume.first())
+    }
+
+    @Test
+    fun `worker retires the recorded pending resume when it fires`() = runBlocking {
+        setEngineEnabled(true)
+        context.fauxxDataStore.writePendingResume(PendingResume(EngineState.PAUSED_WIFI, null))
+
+        TestListenableWorkerBuilder<ResumeWorker>(context).build().doWork()
+
+        // The resume has happened (as a tap-to-resume prompt), so the dashboard must stop
+        // reading the engine as waiting for it.
+        assertNull(context.fauxxDataStore.data.first().toPendingResume())
     }
 
     private fun setEngineEnabled(enabled: Boolean) = runBlocking {

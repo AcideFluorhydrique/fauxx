@@ -65,6 +65,7 @@ import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.EngineState
 import com.fauxx.engine.webview.WebViewUpdateHint
 import com.fauxx.engine.webview.WebViewUpdateRoute
+import com.fauxx.service.PendingResume
 import com.fauxx.ui.BackgroundGuidance
 import com.fauxx.ui.format.displayNameRes
 import com.fauxx.ui.format.personaAgeRangeRes
@@ -306,6 +307,7 @@ fun DashboardScreen(
         ProtectionCard(
             enabled = uiState.engineEnabled,
             engineState = uiState.engineState,
+            pendingResume = uiState.pendingResume,
             onToggle = { enabled ->
                 if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     val hasPermission = ContextCompat.checkSelfPermission(
@@ -374,11 +376,22 @@ fun DashboardScreen(
 private fun ProtectionCard(
     enabled: Boolean,
     engineState: EngineState,
+    pendingResume: PendingResume?,
     onToggle: (Boolean) -> Unit,
     onUseMobileData: () -> Unit,
     showUseMobileData: Boolean
 ) {
-    val isPaused = enabled && engineState != EngineState.ACTIVE && engineState != EngineState.STOPPED
+    // Once the engine resigns (quiet hours, a long pause) it is destroyed and reads STOPPED, so
+    // the recorded pending resume stands in for the pause it resigned in (#346).
+    val resigned = enabled && pendingResume != null
+    val shownState = pendingResume?.takeIf { resigned }?.pausedState ?: engineState
+    val isPaused = resigned ||
+        (enabled && engineState != EngineState.ACTIVE && engineState != EngineState.STOPPED)
+    val context = LocalContext.current
+    // DateFormat.getTimeFormat follows the device's 12/24-hour setting.
+    val resumeTime = pendingResume?.resumeAtMs?.takeIf { resigned }?.let {
+        android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(it))
+    }
 
     Card(
         colors = CardDefaults.cardColors(
@@ -411,19 +424,14 @@ private fun ProtectionCard(
                         }
                     )
                     Text(
-                        text = when (engineState) {
-                            EngineState.ACTIVE -> stringResource(R.string.dashboard_engine_state_active)
-                            EngineState.PAUSED_WIFI -> stringResource(R.string.dashboard_engine_state_paused_wifi)
-                            EngineState.PAUSED_METERED_WIFI ->
-                                stringResource(R.string.dashboard_engine_state_paused_metered_wifi)
-                            EngineState.PAUSED_NETWORK_BLOCKED ->
-                                stringResource(R.string.dashboard_engine_state_paused_network_blocked)
-                            EngineState.PAUSED_BATTERY -> stringResource(R.string.dashboard_engine_state_paused_battery)
-                            EngineState.PAUSED_BATTERY_SAVER ->
-                                stringResource(R.string.dashboard_engine_state_paused_battery_saver)
-                            EngineState.PAUSED_RATE_LIMIT -> stringResource(R.string.dashboard_engine_state_paused_rate_limit)
-                            EngineState.PAUSED_QUIET_HOURS -> stringResource(R.string.dashboard_engine_state_paused_quiet_hours)
-                            EngineState.STOPPED -> stringResource(R.string.dashboard_engine_state_stopped)
+                        text = when {
+                            resumeTime == null -> engineStateLabel(shownState)
+                            shownState == EngineState.PAUSED_QUIET_HOURS ->
+                                stringResource(R.string.dashboard_engine_state_quiet_hours_until, resumeTime)
+                            // A loop failure resigns in STOPPED and restarts itself shortly (#197).
+                            shownState == EngineState.STOPPED ->
+                                stringResource(R.string.dashboard_engine_state_restarting_at, resumeTime)
+                            else -> stringResource(R.string.dashboard_engine_state_paused_until, resumeTime)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -436,7 +444,7 @@ private fun ProtectionCard(
             // Only shown when mobile is actually Off — see the call site.
             // A metered-WiFi pause looks identical to "connected but idle" from the user's
             // side, so spell out why before offering the escape hatch (issue #288).
-            if (engineState == EngineState.PAUSED_METERED_WIFI) {
+            if (shownState == EngineState.PAUSED_METERED_WIFI) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.dashboard_metered_wifi_explainer),
@@ -446,7 +454,7 @@ private fun ProtectionCard(
             }
             // The network is up but Android is blocking Fauxx's use of it (#335). Mobile data
             // would not help, so no "use mobile data" button: point at the restriction instead.
-            if (engineState == EngineState.PAUSED_NETWORK_BLOCKED) {
+            if (shownState == EngineState.PAUSED_NETWORK_BLOCKED) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.dashboard_network_blocked_explainer),
@@ -456,6 +464,8 @@ private fun ProtectionCard(
             }
             // The same one-tap opt-in resolves both pauses: each is "this network has no
             // budget", and the mobile tier is the budget that governs them (issues #38, #288).
+            // Not once the engine has resigned: its resume waits on the network constraint it
+            // resigned with, so changing the tier now would not bring it back (#346).
             if ((engineState == EngineState.PAUSED_WIFI ||
                     engineState == EngineState.PAUSED_METERED_WIFI) && showUseMobileData
             ) {
@@ -470,6 +480,24 @@ private fun ProtectionCard(
         }
     }
 }
+
+/** The protection card's one-line description of [state]. */
+@Composable
+private fun engineStateLabel(state: EngineState): String =
+    when (state) {
+        EngineState.ACTIVE -> stringResource(R.string.dashboard_engine_state_active)
+        EngineState.PAUSED_WIFI -> stringResource(R.string.dashboard_engine_state_paused_wifi)
+        EngineState.PAUSED_METERED_WIFI ->
+            stringResource(R.string.dashboard_engine_state_paused_metered_wifi)
+        EngineState.PAUSED_NETWORK_BLOCKED ->
+            stringResource(R.string.dashboard_engine_state_paused_network_blocked)
+        EngineState.PAUSED_BATTERY -> stringResource(R.string.dashboard_engine_state_paused_battery)
+        EngineState.PAUSED_BATTERY_SAVER ->
+            stringResource(R.string.dashboard_engine_state_paused_battery_saver)
+        EngineState.PAUSED_RATE_LIMIT -> stringResource(R.string.dashboard_engine_state_paused_rate_limit)
+        EngineState.PAUSED_QUIET_HOURS -> stringResource(R.string.dashboard_engine_state_paused_quiet_hours)
+        EngineState.STOPPED -> stringResource(R.string.dashboard_engine_state_stopped)
+    }
 
 @Composable
 private fun CounterRow(actionsToday: Int, actionsThisWeek: Int) {

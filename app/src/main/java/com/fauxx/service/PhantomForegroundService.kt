@@ -229,7 +229,10 @@ class PhantomForegroundService : Service() {
     @androidx.annotation.VisibleForTesting
     internal fun onEngineResigned(spec: ResumeSpec) {
         Timber.i("Engine resigned; scheduling resume ($spec) and stopping FGS")
-        runCatching { resumeScheduler.schedule(spec) }
+        // The engine has already set the pause it is resigning in; record it so the dashboard
+        // can say why the engine is off and when it comes back once the engine is gone (#346).
+        val pausedState = runCatching { poisonEngine.engineState.value }.getOrDefault(EngineState.STOPPED)
+        runCatching { resumeScheduler.schedule(spec, pausedState) }
             .onFailure { Timber.e(it, "Failed to schedule resume notification") }
         // Persist buffered log lines now, on this (engine IO) thread, before the FGS stops
         // and the OEM possibly kills the process — otherwise up to a flush-threshold of

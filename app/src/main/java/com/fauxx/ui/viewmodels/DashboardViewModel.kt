@@ -15,6 +15,8 @@ import com.fauxx.di.PreferenceKeys
 import com.fauxx.engine.EngineState
 import com.fauxx.engine.PoisonEngine
 import com.fauxx.engine.PoisonProfileRepository
+import com.fauxx.service.PendingResume
+import com.fauxx.service.PendingResumeSource
 import com.fauxx.service.PhantomForegroundService
 import com.fauxx.targeting.TargetingEngine
 import com.fauxx.targeting.layer2.DriftResult
@@ -125,7 +127,10 @@ data class DashboardUiState(
     val hasControlSeries: Boolean = false,
     /** Mobile-data tier (issue #62); gates the "use mobile data" one-tap action — the
      *  button only helps when this is null (mobile off), not when there's no network. */
-    val mobileIntensity: IntensityLevel? = null
+    val mobileIntensity: IntensityLevel? = null,
+    /** The resume a resigned engine is waiting on (#346), set only while the switch is on, the
+     *  engine is stopped and the resume is still ahead; the card then reads as paused. */
+    val pendingResume: PendingResume? = null,
 )
 
 /** Bundles the two snapshot-derived dashboard metrics so combine() keeps a single snapshot flow. */
@@ -152,7 +157,24 @@ class DashboardViewModel @Inject constructor(
     customDns: CustomDns = CustomDns.NONE,
     private val trackerBlocks: TrackerBlockSource = TrackerBlockSource.NONE,
     private val installedApps: InstalledApps = InstalledApps.NONE,
+    pendingResumes: PendingResumeSource = PendingResumeSource.NONE,
 ) : ViewModel() {
+
+    /**
+     * The recorded pending resume (#346), dropped once its time has passed: a time-based resume
+     * that should already have happened (an alarm the OEM blocked, a start Android denied) is
+     * not "back at" anything any more.
+     */
+    private val pendingResume: Flow<PendingResume?> = pendingResumes.pendingResume.flatMapLatest { pending ->
+        flow {
+            val remainingMs = pending?.resumeAtMs?.let { it - clock.currentTimeMillis() }
+            if (remainingMs == null || remainingMs > 0) emit(pending)
+            if (remainingMs != null) {
+                if (remainingMs > 0) delay(remainingMs)
+                emit(null)
+            }
+        }
+    }
 
     /**
      * Which quiet custom-DNS line to show, or null for none (#227). [CustomDnsNotice.INTERCEPTED] is
@@ -303,7 +325,8 @@ class DashboardViewModel @Inject constructor(
                 control = profileDriftMetric.computeControlDivergence(snaps),
                 hasControl = snaps.any { it.series == SnapshotSeries.CONTROL },
             )
-        }
+        },
+        pendingResume,
     ) { flows ->
         @Suppress("UNCHECKED_CAST")
         val enabled = flows[0] as Boolean
@@ -317,6 +340,7 @@ class DashboardViewModel @Inject constructor(
         val state = flows[6] as EngineState
         val profile = flows[7] as PoisonProfile
         val drift = flows[8] as DriftBundle
+        val pending = flows[9] as PendingResume?
         DashboardUiState(
             engineEnabled = enabled,
             engineState = state,
@@ -331,7 +355,8 @@ class DashboardViewModel @Inject constructor(
             controlDivergenceState = drift.control.state,
             controlDivergenceKl = drift.control.klDivergence,
             hasControlSeries = drift.hasControl,
-            mobileIntensity = profile.mobileIntensity
+            mobileIntensity = profile.mobileIntensity,
+            pendingResume = pendingResumeShown(enabled, state, pending),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardUiState())
 
@@ -465,6 +490,17 @@ class DashboardViewModel @Inject constructor(
                 duckDuckGoInstalled && verdict.vpn.active && !duckDuckGoHintDismissed
             }
         }
+
+        /**
+         * The pending resume the protection card shows (#346), or null. Only while the switch is
+         * on and the engine is [EngineState.STOPPED]: a running engine reports its own state, and
+         * with the switch off a leftover record must not make the card read as paused.
+         */
+        internal fun pendingResumeShown(
+            enabled: Boolean,
+            state: EngineState,
+            pending: PendingResume?,
+        ): PendingResume? = pending.takeIf { enabled && state == EngineState.STOPPED }
 
         private const val DAY_MS = 24 * 60 * 60 * 1000L
         private const val WEEK_MS = 7 * DAY_MS

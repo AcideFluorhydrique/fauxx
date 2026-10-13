@@ -92,6 +92,12 @@ object PreferenceKeys {
     // User dismissed the "DuckDuckGo App Tracking Protection may be blocking trackers" hint (#341)
     val DDG_TRACKER_HINT_DISMISSED = booleanPreferencesKey("ddg_tracker_hint_dismissed")
 
+    // The resume the engine is waiting on after resigning (#346): the EngineState name it paused
+    // in, and the epoch ms of a time-based resume (absent for a constraint-based one). Written and
+    // cleared by ResumeScheduler alongside the alarm / WorkManager job; read by the dashboard.
+    val PENDING_RESUME_STATE = stringPreferencesKey("pending_resume_state")
+    val PENDING_RESUME_AT = androidx.datastore.preferences.core.longPreferencesKey("pending_resume_at")
+
     // UI theme preference (SYSTEM / LIGHT / DARK)
     val THEME_MODE = stringPreferencesKey("theme_mode")
 

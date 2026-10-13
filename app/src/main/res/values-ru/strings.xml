@@ -517,6 +517,9 @@
     <string name="dashboard_engine_state_paused_rate_limit">Достигнут часовой лимит</string>
     <string name="dashboard_engine_state_paused_quiet_hours">Вне активных часов</string>
     <string name="dashboard_engine_state_stopped">Движок остановлен</string>
+    <string name="dashboard_engine_state_quiet_hours_until">Вне активных часов, возобновится в %1$s</string>
+    <string name="dashboard_engine_state_restarting_at">Перезапуск в %1$s</string>
+    <string name="dashboard_engine_state_paused_until">Пауза, возобновится в %1$s</string>
     <string name="dashboard_action_use_mobile_data">Использовать мобильные данные</string>
     <string name="dashboard_category_distribution_title">РАСПРЕДЕЛЕНИЕ КАТЕГОРИЙ</string>
     <string name="dashboard_category_other">другое</string>

@@ -27,6 +27,11 @@ class ResumeWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // This job is the pending resume, and it has now fired, so the dashboard must stop
+        // reading the engine as "paused until..." (#346). Whatever happens next (the user taps
+        // the notification, or the engine resigns again) records its own state.
+        runCatching { applicationContext.fauxxDataStore.writePendingResume(null) }
+            .onFailure { Timber.w(it, "ResumeWorker: failed to clear the pending resume") }
         val enabled = try {
             applicationContext.fauxxDataStore.data.first()[PreferenceKeys.ENABLED] ?: false
         } catch (e: Exception) {

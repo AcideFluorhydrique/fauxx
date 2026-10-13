@@ -18,6 +18,8 @@ import com.fauxx.engine.webview.VpnState
 import com.fauxx.ui.InstalledApps
 import com.fauxx.engine.webview.WebViewCapabilities
 import com.fauxx.network.dns.DnsHealth
+import com.fauxx.service.PendingResume
+import com.fauxx.service.PendingResumeSource
 import com.fauxx.ui.viewmodels.TrackerBlockNotice
 import com.fauxx.support.FakeClock
 import com.fauxx.support.MainDispatcherRule
@@ -325,5 +327,94 @@ class DashboardViewModelTest {
         } finally {
             job.cancel()
         }
+    }
+
+    // --- resigned engine, resume pending (#346) ----------------------------------------------
+
+    @Test
+    fun `the card shows a pending resume only while switched on and stopped`() {
+        val pending = PendingResume(EngineState.PAUSED_QUIET_HOURS, 1_000L)
+        assertEquals(pending, DashboardViewModel.pendingResumeShown(true, EngineState.STOPPED, pending))
+        // A running engine reports its own state, paused or not.
+        assertEquals(null, DashboardViewModel.pendingResumeShown(true, EngineState.ACTIVE, pending))
+        assertEquals(null, DashboardViewModel.pendingResumeShown(true, EngineState.PAUSED_QUIET_HOURS, pending))
+        // With the switch off a leftover record must not make the card read as paused.
+        assertEquals(null, DashboardViewModel.pendingResumeShown(false, EngineState.STOPPED, pending))
+        assertEquals(null, DashboardViewModel.pendingResumeShown(true, EngineState.STOPPED, null))
+    }
+
+    private fun pendingResumeViewModel(clock: FakeClock, pending: MutableStateFlow<PendingResume?>) =
+        DashboardViewModel(
+            context, actionLogDao, profileRepo, poisonEngine, targetingEngine, personaLayer, dataStore,
+            mockk<com.fauxx.targeting.layer2.ProfileSnapshotDao>(relaxed = true) {
+                every { observeAll() } returns MutableStateFlow(emptyList<com.fauxx.targeting.layer2.ProfileSnapshot>())
+            },
+            com.fauxx.targeting.layer2.ProfileDriftMetric(), clock,
+            pendingResumes = object : PendingResumeSource {
+                override val pendingResume = pending
+            },
+        )
+
+    @Test
+    fun `quiet hours after the engine resigned read as paused until the resume time`() = runTest(testDispatcher) {
+        every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
+        every { profileRepo.getProfile() } returns PoisonProfile(enabled = true)
+        val clock = FakeClock(1_700_000_000_000L)
+        val resumeAt = clock.nowMs + 8 * 60 * 60_000L
+        val pending = MutableStateFlow<PendingResume?>(PendingResume(EngineState.PAUSED_QUIET_HOURS, resumeAt))
+        val vm = pendingResumeViewModel(clock, pending)
+        val job = launch { vm.uiState.collect {} }
+        testScheduler.runCurrent()
+
+        assertEquals(PendingResume(EngineState.PAUSED_QUIET_HOURS, resumeAt), vm.uiState.value.pendingResume)
+
+        // The engine comes back and takes over from the resume, which retires the record.
+        pending.value = null
+        testScheduler.runCurrent()
+        assertEquals(null, vm.uiState.value.pendingResume)
+        job.cancel()
+    }
+
+    @Test
+    fun `a constraint resume has no time and stays until it is retired`() = runTest(testDispatcher) {
+        every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
+        every { profileRepo.getProfile() } returns PoisonProfile(enabled = true)
+        val clock = FakeClock(1_700_000_000_000L)
+        val pending = MutableStateFlow<PendingResume?>(PendingResume(EngineState.PAUSED_WIFI, null))
+        val vm = pendingResumeViewModel(clock, pending)
+        val job = launch { vm.uiState.collect {} }
+        testScheduler.runCurrent()
+
+        clock.nowMs += 24 * 60 * 60_000L
+        testScheduler.advanceTimeBy(24 * 60 * 60_000L)
+        testScheduler.runCurrent()
+        assertEquals(PendingResume(EngineState.PAUSED_WIFI, null), vm.uiState.value.pendingResume)
+        job.cancel()
+    }
+
+    @Test
+    fun `a time-based resume that is overdue no longer reads as paused`() = runTest(testDispatcher) {
+        every { actionLogDao.countSince(any()) } returns MutableStateFlow(0)
+        every { profileRepo.getProfile() } returns PoisonProfile(enabled = true)
+        val clock = FakeClock(1_700_000_000_000L)
+        // A loop-failure restart one minute out (#197).
+        val resumeAt = clock.nowMs + 60_000L
+        val pending = MutableStateFlow<PendingResume?>(PendingResume(EngineState.STOPPED, resumeAt))
+        val vm = pendingResumeViewModel(clock, pending)
+        val job = launch { vm.uiState.collect {} }
+        testScheduler.runCurrent()
+        assertEquals(PendingResume(EngineState.STOPPED, resumeAt), vm.uiState.value.pendingResume)
+
+        // The time passes with the engine still off (an alarm the OEM blocked): no "back at" any more.
+        clock.nowMs += 61_000L
+        testScheduler.advanceTimeBy(61_000L)
+        testScheduler.runCurrent()
+        assertEquals(null, vm.uiState.value.pendingResume)
+
+        // A record whose time has already passed is never shown at all.
+        pending.value = PendingResume(EngineState.PAUSED_QUIET_HOURS, clock.nowMs - 1)
+        testScheduler.runCurrent()
+        assertEquals(null, vm.uiState.value.pendingResume)
+        job.cancel()
     }
 }

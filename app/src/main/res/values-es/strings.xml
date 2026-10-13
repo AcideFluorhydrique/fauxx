@@ -493,6 +493,9 @@
     <string name="dashboard_engine_state_paused_rate_limit">Límite horario alcanzado</string>
     <string name="dashboard_engine_state_paused_quiet_hours">Fuera de las horas activas</string>
     <string name="dashboard_engine_state_stopped">Motor detenido</string>
+    <string name="dashboard_engine_state_quiet_hours_until">Fuera de las horas activas, vuelve a las %1$s</string>
+    <string name="dashboard_engine_state_restarting_at">Reiniciando a las %1$s</string>
+    <string name="dashboard_engine_state_paused_until">En pausa, vuelve a las %1$s</string>
     <string name="dashboard_action_use_mobile_data">Usar datos móviles</string>
     <string name="dashboard_category_distribution_title">DISTRIBUCIÓN DE CATEGORÍAS</string>
     <string name="dashboard_category_distribution_help">Muestra cómo se distribuye tu ruido sintético entre categorías temáticas. Una distribución más amplia significa que los rastreadores ven un perfil más confuso. Las categorías se ponderan en función del motor de segmentación para maximizar la distancia respecto a tus intereses reales.</string>

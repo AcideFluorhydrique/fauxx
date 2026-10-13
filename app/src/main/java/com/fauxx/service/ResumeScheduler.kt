@@ -5,15 +5,30 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.annotation.VisibleForTesting
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.fauxx.di.fauxxDataStore
+import com.fauxx.engine.EngineState
 import com.fauxx.util.Clock
 import com.fauxx.util.SystemClockImpl
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -48,17 +63,44 @@ private const val ALARM_REQUEST_CODE = 4242
  * — only one pending resume notification exists at a time. If the user opens the app and
  * resumes manually before the scheduler fires, [cancel] should be called from the
  * service start path so a stale notification doesn't surface later.
+ *
+ * Also records the pending resume in DataStore and exposes it as [pendingResume] (#346): the
+ * engine is destroyed once it resigns, so this record is the only thing that can tell the
+ * dashboard the engine is paused rather than stopped, and when it comes back.
  */
 @Singleton
 class ResumeScheduler @Inject constructor(
     @ApplicationContext private val context: Context,
     private val clock: Clock = SystemClockImpl(),
-) {
-    fun schedule(spec: ResumeSpec) {
+    private val dataStore: DataStore<Preferences> = context.fauxxDataStore,
+) : PendingResumeSource {
+
+    /**
+     * Record writes run in call order on one thread, each finishing before the next starts, so a
+     * [schedule] followed at once by a [cancel] can never land as "still pending". Off the
+     * caller's thread: [cancel] is called on the main thread from the service's stop path.
+     */
+    private val recordScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val recordLock = Mutex()
+
+    override val pendingResume: Flow<PendingResume?> = dataStore.data
+        .map { it.toPendingResume() }
+        .catch { e ->
+            Timber.w(e, "ResumeScheduler: could not read the pending resume")
+            emit(null)
+        }
+        .distinctUntilChanged()
+
+    /**
+     * Schedule the resume for [spec]. [pausedState] is the engine state the engine resigned in,
+     * recorded only for the dashboard (#346); it does not affect when or how the resume fires.
+     */
+    fun schedule(spec: ResumeSpec, pausedState: EngineState = EngineState.STOPPED) {
         when (spec) {
             is ResumeSpec.AtTime -> scheduleAtTime(spec.epochMs)
             is ResumeSpec.WhenConstraintMet -> scheduleWhenConstraintMet(spec)
         }
+        record(PendingResume(pausedState, (spec as? ResumeSpec.AtTime)?.epochMs))
     }
 
     /**
@@ -133,6 +175,22 @@ class ResumeScheduler @Inject constructor(
         runCatching {
             (context.getSystemService(Context.ALARM_SERVICE) as AlarmManager).cancel(alarmPendingIntent())
         }
+        record(null)
         Timber.d("ResumeScheduler: cancelled")
+    }
+
+    private fun record(pending: PendingResume?) {
+        recordScope.launch {
+            recordLock.withLock {
+                runCatching { dataStore.writePendingResume(pending) }
+                    .onFailure { Timber.w(it, "ResumeScheduler: could not record the pending resume") }
+            }
+        }
+    }
+
+    /** Suspends until every record queued before this call has been written. For tests. */
+    @VisibleForTesting
+    internal suspend fun awaitRecorded() {
+        recordScope.launch { recordLock.withLock { } }.join()
     }
 }
