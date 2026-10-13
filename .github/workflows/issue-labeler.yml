@@ -32,13 +32,18 @@ jobs:
           labels_to_add=()
 
           # --- Crash signals ---
-          # The dataSync FGS timeout is the dominant crash class. Detect from the
-          # exception name or the FQCN — both survive copy-paste cleanly.
+          # Only an actual crash marker counts: the FGS timeout exception, Android's
+          # "FATAL EXCEPTION" header, or Fauxx's own crash report header. Service and
+          # FGS-type names alone are not crash signals, because ordinary engine log
+          # excerpts mention them too (#346 was mislabelled that way).
           if echo "$TITLE" | grep -qiE 'crash|crashed|crashing'; then
             labels_to_add+=("crash")
           fi
-          if echo "$BODY" | grep -qE 'ForegroundServiceDidNotStopInTimeException|PhantomForegroundService|dataSync'; then
-            labels_to_add+=("crash" "area:engine")
+          if echo "$BODY" | grep -qE 'ForegroundServiceDidNotStopInTimeException|FATAL EXCEPTION|=== Fauxx Crash Report ==='; then
+            labels_to_add+=("crash")
+          fi
+          if echo "$BODY" | grep -qE 'ForegroundServiceDidNotStopInTimeException|PhantomForegroundService'; then
+            labels_to_add+=("area:engine")
           fi
 
           # --- Flavor detection (form dropdown) ---
