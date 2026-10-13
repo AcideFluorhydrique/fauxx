@@ -184,15 +184,11 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.healthline.com/health/fitness",
-    "category": "MEDICAL"
-  },
-  {
     "url": "https://www.healthline.com/health/mental-health",
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.healthline.com/health/sleep",
+    "url": "https://www.healthline.com/sleep",
     "category": "MEDICAL"
   },
   {
@@ -312,10 +308,6 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.health.harvard.edu/topics/nutrition",
-    "category": "MEDICAL"
-  },
-  {
     "url": "https://www.health.harvard.edu/topics/pain",
     "category": "MEDICAL"
   },
@@ -348,11 +340,11 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.drugs.com/drug-classes/",
+    "url": "https://www.drugs.com/drug-class/",
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.drugs.com/medical-conditions/",
+    "url": "https://www.drugs.com/medical_conditions.html",
     "category": "MEDICAL"
   },
   {
@@ -440,7 +432,7 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.verywellmind.com/conditions-a-z-702702",
+    "url": "https://www.verywellmind.com/conditions-a-z-4797402",
     "category": "MEDICAL"
   },
   {
@@ -472,10 +464,6 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.arthritis.org/diseases",
-    "category": "MEDICAL"
-  },
-  {
     "url": "https://www.aao.org/eye-health",
     "category": "MEDICAL"
   },
@@ -484,7 +472,7 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.mouthhealthy.org/all-topics",
+    "url": "https://www.mouthhealthy.org/all-topics-a-z",
     "category": "MEDICAL"
   },
   {
@@ -513,10 +501,6 @@
   },
   {
     "url": "https://www.nutrition.gov/topics",
-    "category": "MEDICAL"
-  },
-  {
-    "url": "https://www.choosemyplate.gov/",
     "category": "MEDICAL"
   },
   {
@@ -604,10 +588,6 @@
     "category": "MEDICAL"
   },
   {
-    "url": "https://www.dukehealth.org/conditions",
-    "category": "MEDICAL"
-  },
-  {
     "url": "https://www.massgeneral.org/conditions-and-diseases",
     "category": "MEDICAL"
   },
@@ -676,11 +656,11 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.nolo.com/legal-encyclopedia/employment-law",
+    "url": "https://www.nolo.com/legal-encyclopedia/hr-employment-law",
     "category": "LEGAL"
   },
   {
-    "url": "https://www.nolo.com/legal-encyclopedia/real-estate",
+    "url": "https://www.nolo.com/legal-encyclopedia/real-estate-rental-property",
     "category": "LEGAL"
   },
   {
@@ -700,7 +680,7 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.nolo.com/legal-encyclopedia/landlord-tenant-law",
+    "url": "https://www.nolo.com/legal-encyclopedia/landlords",
     "category": "LEGAL"
   },
   {
@@ -708,19 +688,11 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.nolo.com/legal-encyclopedia/debt-management",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.nolo.com/legal-encyclopedia/intellectual-property",
+    "url": "https://www.nolo.com/legal-encyclopedia/collection-agencies",
     "category": "LEGAL"
   },
   {
     "url": "https://www.avvo.com/legal-guides/",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.avvo.com/legal-answers/",
     "category": "LEGAL"
   },
   {
@@ -736,7 +708,7 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.law.cornell.edu/supct/text/home",
+    "url": "https://www.law.cornell.edu/supct",
     "category": "LEGAL"
   },
   {
@@ -764,7 +736,7 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.justia.com/business-law/",
+    "url": "https://www.justia.com/business-operations/",
     "category": "LEGAL"
   },
   {
@@ -785,10 +757,6 @@
   },
   {
     "url": "https://www.justia.com/intellectual-property/",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.justia.com/environmental-law/",
     "category": "LEGAL"
   },
   {
@@ -860,15 +828,7 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.lawyers.com/legal-info/",
-    "category": "LEGAL"
-  },
-  {
     "url": "https://www.alllaw.com/articles/",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.freeadvice.com/law/",
     "category": "LEGAL"
   },
   {
@@ -876,15 +836,7 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.thebalancemoney.com/legal-issues-4073969",
-    "category": "LEGAL"
-  },
-  {
     "url": "https://www.eeoc.gov/laws/",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.dol.gov/general/topic/",
     "category": "LEGAL"
   },
   {
@@ -952,10 +904,6 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.ncsc.org/topics",
-    "category": "LEGAL"
-  },
-  {
     "url": "https://www.nclc.org/issues/",
     "category": "LEGAL"
   },
@@ -968,19 +916,11 @@
     "category": "LEGAL"
   },
   {
-    "url": "https://www.splcenter.org/issues",
+    "url": "https://www.splcenter.org/racial-justice-issues/",
     "category": "LEGAL"
   },
   {
     "url": "https://www.eff.org/issues",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.nacdl.org/Landing/CriminalDefenseTopics",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.aila.org/practice/practice-resources",
     "category": "LEGAL"
   },
   {
@@ -1005,10 +945,6 @@
   },
   {
     "url": "https://www.custodyxchange.com/topics/",
-    "category": "LEGAL"
-  },
-  {
-    "url": "https://www.thebalancemoney.com/estate-planning-4073963",
     "category": "LEGAL"
   },
   {
@@ -1084,10 +1020,6 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.cars.com/articles/",
-    "category": "AUTOMOTIVE"
-  },
-  {
     "url": "https://www.cars.com/news/",
     "category": "AUTOMOTIVE"
   },
@@ -1148,7 +1080,7 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.kbb.com/electric-cars/",
+    "url": "https://www.kbb.com/electric-guide/",
     "category": "AUTOMOTIVE"
   },
   {
@@ -1165,10 +1097,6 @@
   },
   {
     "url": "https://www.motortrend.com/features/",
-    "category": "AUTOMOTIVE"
-  },
-  {
-    "url": "https://www.motortrend.com/how-to/",
     "category": "AUTOMOTIVE"
   },
   {
@@ -1344,7 +1272,7 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.geico.com/living/driving/auto/",
+    "url": "https://www.geico.com/living/",
     "category": "AUTOMOTIVE"
   },
   {
@@ -1360,11 +1288,11 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.nerdwallet.com/article/insurance/car-insurance",
+    "url": "https://www.nerdwallet.com/insurance/auto/car-insurance",
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.thebalancemoney.com/auto-loans-and-financing-4073850",
+    "url": "https://www.thebalancemoney.com/loans-4073271",
     "category": "AUTOMOTIVE"
   },
   {
@@ -1388,10 +1316,6 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.honda.com/owners",
-    "category": "AUTOMOTIVE"
-  },
-  {
     "url": "https://www.hyundaiusa.com/us/en/owners",
     "category": "AUTOMOTIVE"
   },
@@ -1408,10 +1332,6 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.audiusa.com/us/web/en/owners.html",
-    "category": "AUTOMOTIVE"
-  },
-  {
     "url": "https://www.vw.com/en/owners.html",
     "category": "AUTOMOTIVE"
   },
@@ -1424,19 +1344,11 @@
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.mazda.com/en/owners/",
-    "category": "AUTOMOTIVE"
-  },
-  {
-    "url": "https://www.kia.com/us/en/owners",
-    "category": "AUTOMOTIVE"
-  },
-  {
     "url": "https://www.rivian.com/support",
     "category": "AUTOMOTIVE"
   },
   {
-    "url": "https://www.lucidmotors.com/owners",
+    "url": "https://lucidmotors.com/lucid-ownership-hub",
     "category": "AUTOMOTIVE"
   },
   {
@@ -1489,14 +1401,6 @@
   },
   {
     "url": "https://www.babycenter.com/toddler",
-    "category": "PARENTING"
-  },
-  {
-    "url": "https://www.babycenter.com/preschooler",
-    "category": "PARENTING"
-  },
-  {
-    "url": "https://www.babycenter.com/big-kid",
     "category": "PARENTING"
   },
   {
@@ -1572,10 +1476,6 @@
     "category": "PARENTING"
   },
   {
-    "url": "https://www.understood.org/en/articles",
-    "category": "PARENTING"
-  },
-  {
     "url": "https://www.understood.org/en/learning-thinking-differences",
     "category": "PARENTING"
   },
@@ -1604,7 +1504,7 @@
     "category": "PARENTING"
   },
   {
-    "url": "https://www.fatherly.com/health-science",
+    "url": "https://www.fatherly.com/health-wellness",
     "category": "PARENTING"
   },
   {
@@ -1613,14 +1513,6 @@
   },
   {
     "url": "https://www.mother.ly/parenting/",
-    "category": "PARENTING"
-  },
-  {
-    "url": "https://www.romper.com/parenting",
-    "category": "PARENTING"
-  },
-  {
-    "url": "https://www.care.com/c/stories/",
     "category": "PARENTING"
   },
   {
@@ -1724,7 +1616,7 @@
     "category": "PARENTING"
   },
   {
-    "url": "https://www.marchofdimes.org/baby/",
+    "url": "https://www.marchofdimes.org/find-support/topics/planning-for-baby",
     "category": "PARENTING"
   },
   {
@@ -1756,7 +1648,7 @@
     "category": "PARENTING"
   },
   {
-    "url": "https://www.cookinglight.com/eating-smart/nutrition-101/healthy-eating-for-kids",
+    "url": "https://www.eatingwell.com/category/4311/healthy-eating-for-kids/",
     "category": "PARENTING"
   },
   {
@@ -1876,7 +1768,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.nerdwallet.com/article/investing/retirement-planning",
+    "url": "https://www.nerdwallet.com/retirement",
     "category": "RETIREMENT"
   },
   {
@@ -1884,11 +1776,11 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.nerdwallet.com/article/investing/ira-guide",
+    "url": "https://www.nerdwallet.com/retirement/best/ira-accounts",
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.nerdwallet.com/article/investing/401k",
+    "url": "https://www.nerdwallet.com/investing",
     "category": "RETIREMENT"
   },
   {
@@ -1900,19 +1792,11 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.thebalancemoney.com/estate-planning-4073963",
-    "category": "RETIREMENT"
-  },
-  {
     "url": "https://www.fidelity.com/retirement-planning/overview",
     "category": "RETIREMENT"
   },
   {
     "url": "https://www.fidelity.com/viewpoints/retirement/",
-    "category": "RETIREMENT"
-  },
-  {
-    "url": "https://www.vanguard.com/retirement/",
     "category": "RETIREMENT"
   },
   {
@@ -1928,15 +1812,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.bankrate.com/retirement/social-security/",
-    "category": "RETIREMENT"
-  },
-  {
     "url": "https://www.bankrate.com/retirement/401k/",
-    "category": "RETIREMENT"
-  },
-  {
-    "url": "https://www.bankrate.com/retirement/ira/",
     "category": "RETIREMENT"
   },
   {
@@ -2004,7 +1880,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.agingcare.com/caregiver/",
+    "url": "https://www.agingcare.com/topics/60/caregiver-support",
     "category": "RETIREMENT"
   },
   {
@@ -2016,7 +1892,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.eldercare.acl.gov/Public/Index.aspx",
+    "url": "https://eldercare.acl.gov/",
     "category": "RETIREMENT"
   },
   {
@@ -2036,7 +1912,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.ncoa.org/article/benefits-for-seniors",
+    "url": "https://www.ncoa.org/benefits-assistance/",
     "category": "RETIREMENT"
   },
   {
@@ -2072,15 +1948,11 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/resource-center/publications-for-you/retirement",
+    "url": "https://www.dol.gov/agencies/ebsa",
     "category": "RETIREMENT"
   },
   {
     "url": "https://www.consumerfinance.gov/consumer-tools/retirement/",
-    "category": "RETIREMENT"
-  },
-  {
-    "url": "https://mymoney.gov/save-invest",
     "category": "RETIREMENT"
   },
   {
@@ -2092,11 +1964,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.nfcc.org/resources/blog/category/retirement/",
-    "category": "RETIREMENT"
-  },
-  {
-    "url": "https://www.wiser.org/",
+    "url": "https://www.nfcc.org/blog",
     "category": "RETIREMENT"
   },
   {
@@ -2116,7 +1984,7 @@
     "category": "RETIREMENT"
   },
   {
-    "url": "https://www.peacecorps.gov/volunteer/is-peace-corps-right-for-me/50-plus/",
+    "url": "https://www.peacecorps.gov/ways-to-serve/serve-with-us/peace-corps-volunteer/",
     "category": "RETIREMENT"
   },
   {
@@ -2144,10 +2012,6 @@
     "category": "GAMING"
   },
   {
-    "url": "https://www.gamespot.com/articles/",
-    "category": "GAMING"
-  },
-  {
     "url": "https://www.gamespot.com/videos/",
     "category": "GAMING"
   },
@@ -2156,7 +2020,7 @@
     "category": "GAMING"
   },
   {
-    "url": "https://www.polygon.com/reviews",
+    "url": "https://www.polygon.com/gaming-reviews/",
     "category": "GAMING"
   },
   {
@@ -2260,10 +2124,6 @@
     "category": "GAMING"
   },
   {
-    "url": "https://www.tomsguide.com/best-picks/best-games",
-    "category": "GAMING"
-  },
-  {
     "url": "https://store.steampowered.com/explore/",
     "category": "GAMING"
   },
@@ -2313,14 +2173,6 @@
   },
   {
     "url": "https://www.bandainamcoent.com/news",
-    "category": "GAMING"
-  },
-  {
-    "url": "https://www.bethesda.net/en/article/",
-    "category": "GAMING"
-  },
-  {
-    "url": "https://www.blizzard.com/en-us/news",
     "category": "GAMING"
   },
   {
@@ -2600,23 +2452,7 @@
     "category": "AGRICULTURE"
   },
   {
-    "url": "https://www.tractorsupply.com/know-how",
-    "category": "AGRICULTURE"
-  },
-  {
-    "url": "https://www.deere.com/en/knowledge-center/",
-    "category": "AGRICULTURE"
-  },
-  {
-    "url": "https://www.case.com/en-us/news-media",
-    "category": "AGRICULTURE"
-  },
-  {
     "url": "https://www.kubotausa.com/innovation",
-    "category": "AGRICULTURE"
-  },
-  {
-    "url": "https://www.farming-equipment.com/",
     "category": "AGRICULTURE"
   },
   {
@@ -2657,10 +2493,6 @@
   },
   {
     "url": "https://www.extension.iastate.edu/agdm/",
-    "category": "AGRICULTURE"
-  },
-  {
-    "url": "https://agfax.com/",
     "category": "AGRICULTURE"
   },
   {
@@ -2724,15 +2556,11 @@
     "category": "AGRICULTURE"
   },
   {
-    "url": "https://www.extension.purdue.edu/agriculture",
+    "url": "https://www.extension.purdue.edu/anr/index.html",
     "category": "AGRICULTURE"
   },
   {
     "url": "https://www.caes.uga.edu/",
-    "category": "AGRICULTURE"
-  },
-  {
-    "url": "https://www.beekeeping.org/",
     "category": "AGRICULTURE"
   },
   {
@@ -2745,10 +2573,6 @@
   },
   {
     "url": "https://www.fs.usda.gov/",
-    "category": "AGRICULTURE"
-  },
-  {
-    "url": "https://www.srs.fs.usda.gov/",
     "category": "AGRICULTURE"
   },
   {
@@ -2804,10 +2628,6 @@
     "category": "FASHION"
   },
   {
-    "url": "https://www.gq.com/gallery/best-stuff",
-    "category": "FASHION"
-  },
-  {
     "url": "https://www.elle.com/fashion/",
     "category": "FASHION"
   },
@@ -2849,14 +2669,6 @@
   },
   {
     "url": "https://www.thecut.com/fashion/",
-    "category": "FASHION"
-  },
-  {
-    "url": "https://www.manrepeller.com/",
-    "category": "FASHION"
-  },
-  {
-    "url": "https://www.highsnobiety.com/fashion/",
     "category": "FASHION"
   },
   {
@@ -2904,10 +2716,6 @@
     "category": "FASHION"
   },
   {
-    "url": "https://www.shopbop.com/trends/",
-    "category": "FASHION"
-  },
-  {
     "url": "https://www.net-a-porter.com/en-us/porter",
     "category": "FASHION"
   },
@@ -2928,19 +2736,11 @@
     "category": "FASHION"
   },
   {
-    "url": "https://www.uniqlo.com/us/en/featured/",
-    "category": "FASHION"
-  },
-  {
     "url": "https://www.asos.com/us/magazine/",
     "category": "FASHION"
   },
   {
     "url": "https://www.urbanoutfitters.com/blog",
-    "category": "FASHION"
-  },
-  {
-    "url": "https://www.freepeople.com/stories/",
     "category": "FASHION"
   },
   {
@@ -2964,10 +2764,6 @@
     "category": "FASHION"
   },
   {
-    "url": "https://www.newbalance.com/stories/",
-    "category": "FASHION"
-  },
-  {
     "url": "https://www.levi.com/US/en_US/blog",
     "category": "FASHION"
   },
@@ -2981,10 +2777,6 @@
   },
   {
     "url": "https://www.thredshop.com/blog/",
-    "category": "FASHION"
-  },
-  {
-    "url": "https://www.poshmark.com/blog",
     "category": "FASHION"
   },
   {
@@ -3028,11 +2820,7 @@
     "category": "FASHION"
   },
   {
-    "url": "https://theidleman.com/",
-    "category": "FASHION"
-  },
-  {
-    "url": "https://www.brides.com/wedding-dresses",
+    "url": "https://www.brides.com/wedding-dresses-4692022",
     "category": "FASHION"
   },
   {
@@ -3068,7 +2856,7 @@
     "category": "FASHION"
   },
   {
-    "url": "https://www.byrdie.com/fashion",
+    "url": "https://www.byrdie.com/fashion-trends-5118232",
     "category": "FASHION"
   },
   {
@@ -3093,10 +2881,6 @@
   },
   {
     "url": "https://www.buzzfeed.com/shopping",
-    "category": "FASHION"
-  },
-  {
-    "url": "https://www.racked.com/",
     "category": "FASHION"
   },
   {
@@ -3504,7 +3288,7 @@
     "category": "REAL_ESTATE"
   },
   {
-    "url": "https://www.redfin.com/guides/",
+    "url": "https://www.redfin.com/guides/buy",
     "category": "REAL_ESTATE"
   },
   {
@@ -3525,10 +3309,6 @@
   },
   {
     "url": "https://www.nerdwallet.com/mortgages",
-    "category": "REAL_ESTATE"
-  },
-  {
-    "url": "https://www.nerdwallet.com/article/mortgages/home-buying-checklist",
     "category": "REAL_ESTATE"
   },
   {
@@ -3676,10 +3456,6 @@
     "category": "REAL_ESTATE"
   },
   {
-    "url": "https://www.costar.com/article",
-    "category": "REAL_ESTATE"
-  },
-  {
     "url": "https://www.loopnet.com/learn/",
     "category": "REAL_ESTATE"
   },
@@ -3724,7 +3500,7 @@
     "category": "REAL_ESTATE"
   },
   {
-    "url": "https://www.fool.com/real-estate/",
+    "url": "https://www.fool.com/investing/stock-market/market-sectors/real-estate-investing/",
     "category": "REAL_ESTATE"
   },
   {
@@ -3856,7 +3632,7 @@
     "category": "COOKING"
   },
   {
-    "url": "https://www.marthastewart.com/1505004/cooking",
+    "url": "https://www.marthastewart.com/1518935/cooking-how-tos",
     "category": "COOKING"
   },
   {
@@ -3904,7 +3680,7 @@
     "category": "COOKING"
   },
   {
-    "url": "https://www.shape.com/healthy-eating/cooking-tips",
+    "url": "https://www.shape.com/healthy-eating/meal-ideas",
     "category": "COOKING"
   },
   {
@@ -4000,10 +3776,6 @@
     "category": "COOKING"
   },
   {
-    "url": "https://fermentationassociation.org/",
-    "category": "COOKING"
-  },
-  {
     "url": "https://www.culturesforhealth.com/learn/",
     "category": "COOKING"
   },
@@ -4076,11 +3848,7 @@
     "category": "SPORTS"
   },
   {
-    "url": "https://www.si.com/college/football",
-    "category": "SPORTS"
-  },
-  {
-    "url": "https://www.si.com/college/basketball",
+    "url": "https://www.si.com/college/college-basketball",
     "category": "SPORTS"
   },
   {
@@ -4217,10 +3985,6 @@
   },
   {
     "url": "https://www.theringer.com/",
-    "category": "SPORTS"
-  },
-  {
-    "url": "https://fivethirtyeight.com/sports/",
     "category": "SPORTS"
   },
   {
@@ -4444,10 +4208,6 @@
     "category": "FINANCE"
   },
   {
-    "url": "https://www.vanguard.com/investor-resources-education/",
-    "category": "FINANCE"
-  },
-  {
     "url": "https://www.schwab.com/learn",
     "category": "FINANCE"
   },
@@ -4525,10 +4285,6 @@
   },
   {
     "url": "https://www.youneedabudget.com/blog/",
-    "category": "FINANCE"
-  },
-  {
-    "url": "https://www.mint.com/blog",
     "category": "FINANCE"
   },
   {
@@ -4712,7 +4468,7 @@
     "category": "TRAVEL"
   },
   {
-    "url": "https://www.nerdwallet.com/article/travel",
+    "url": "https://www.nerdwallet.com/travel",
     "category": "TRAVEL"
   },
   {
@@ -4777,14 +4533,6 @@
   },
   {
     "url": "https://www.hotels.com/go/",
-    "category": "TRAVEL"
-  },
-  {
-    "url": "https://www.marriott.com/traveler/",
-    "category": "TRAVEL"
-  },
-  {
-    "url": "https://www.hilton.com/en/stories/",
     "category": "TRAVEL"
   },
   {
@@ -5220,10 +4968,6 @@
     "category": "TECHNOLOGY"
   },
   {
-    "url": "https://www.protocol.com/",
-    "category": "TECHNOLOGY"
-  },
-  {
     "url": "https://www.platformer.news/",
     "category": "TECHNOLOGY"
   },
@@ -5276,15 +5020,11 @@
     "category": "PETS"
   },
   {
-    "url": "https://www.aspca.org/animal-poison-control",
+    "url": "https://www.petmd.com/dog/adult",
     "category": "PETS"
   },
   {
-    "url": "https://www.petmd.com/dog",
-    "category": "PETS"
-  },
-  {
-    "url": "https://www.petmd.com/cat",
+    "url": "https://www.petmd.com/cat/adult",
     "category": "PETS"
   },
   {
@@ -5292,7 +5032,7 @@
     "category": "PETS"
   },
   {
-    "url": "https://www.petmd.com/reptile",
+    "url": "https://www.petmd.com/reptile/species",
     "category": "PETS"
   },
   {
@@ -5300,7 +5040,7 @@
     "category": "PETS"
   },
   {
-    "url": "https://www.petmd.com/exotic",
+    "url": "https://www.petmd.com/hub/exotic-pet-care-sheets",
     "category": "PETS"
   },
   {
@@ -5333,10 +5073,6 @@
   },
   {
     "url": "https://www.thesprucepets.com/small-pets-4162068",
-    "category": "PETS"
-  },
-  {
-    "url": "https://www.petfinder.com/dogs/",
     "category": "PETS"
   },
   {
@@ -5393,10 +5129,6 @@
   },
   {
     "url": "https://www.whole-dog-journal.com/",
-    "category": "PETS"
-  },
-  {
-    "url": "https://www.cesarsway.com/",
     "category": "PETS"
   },
   {
@@ -5484,10 +5216,6 @@
     "category": "PETS"
   },
   {
-    "url": "https://www.birdchannel.com/",
-    "category": "PETS"
-  },
-  {
     "url": "https://www.beautyofbirds.com/",
     "category": "PETS"
   },
@@ -5572,11 +5300,7 @@
     "category": "HOME_IMPROVEMENT"
   },
   {
-    "url": "https://www.familyhandyman.com/list/projects/",
-    "category": "HOME_IMPROVEMENT"
-  },
-  {
-    "url": "https://www.familyhandyman.com/list/home-repair/",
+    "url": "https://www.familyhandyman.com/article/projects/",
     "category": "HOME_IMPROVEMENT"
   },
   {
@@ -5584,7 +5308,7 @@
     "category": "HOME_IMPROVEMENT"
   },
   {
-    "url": "https://www.bobvila.com/articles/category/repair/",
+    "url": "https://www.bobvila.com/category/repair-maintenance/",
     "category": "HOME_IMPROVEMENT"
   },
   {
@@ -5629,10 +5353,6 @@
   },
   {
     "url": "https://www.instructables.com/workshop/",
-    "category": "HOME_IMPROVEMENT"
-  },
-  {
-    "url": "https://www.instructables.com/home/",
     "category": "HOME_IMPROVEMENT"
   },
   {
@@ -5732,11 +5452,7 @@
     "category": "HOME_IMPROVEMENT"
   },
   {
-    "url": "https://www.energy.gov/energysaver/energy-saver",
-    "category": "HOME_IMPROVEMENT"
-  },
-  {
-    "url": "https://www.consumerreports.org/home-improvement/",
+    "url": "https://www.consumerreports.org/home-garden/home-improvement/",
     "category": "HOME_IMPROVEMENT"
   },
   {
@@ -5756,7 +5472,7 @@
     "category": "HOME_IMPROVEMENT"
   },
   {
-    "url": "https://www.wikihow.com/Category:Home-Improvement",
+    "url": "https://www.wikihow.com/Category:Home-and-Garden",
     "category": "HOME_IMPROVEMENT"
   },
   {
@@ -5812,15 +5528,15 @@
     "category": "BEAUTY"
   },
   {
-    "url": "https://www.byrdie.com/skin-care-4581453",
+    "url": "https://www.byrdie.com/skin-4628389",
     "category": "BEAUTY"
   },
   {
-    "url": "https://www.byrdie.com/hair-4581452",
+    "url": "https://www.byrdie.com/hair-4628407",
     "category": "BEAUTY"
   },
   {
-    "url": "https://www.byrdie.com/makeup-4581451",
+    "url": "https://www.byrdie.com/makeup-4628402",
     "category": "BEAUTY"
   },
   {
@@ -5920,7 +5636,7 @@
     "category": "BEAUTY"
   },
   {
-    "url": "https://www.manofmany.com/grooming",
+    "url": "https://manofmany.com/style/hairstyles-grooming",
     "category": "BEAUTY"
   },
   {
@@ -5949,14 +5665,6 @@
   },
   {
     "url": "https://www.cerave.com/skin-smarts",
-    "category": "BEAUTY"
-  },
-  {
-    "url": "https://www.laroche-posay.us/skincare-blog",
-    "category": "BEAUTY"
-  },
-  {
-    "url": "https://www.neutrogena.com/skin-care-tips.html",
     "category": "BEAUTY"
   },
   {
@@ -6000,10 +5708,6 @@
     "category": "BEAUTY"
   },
   {
-    "url": "https://www.todayshow.com/style/beauty",
-    "category": "BEAUTY"
-  },
-  {
     "url": "https://www.goodhousekeeping.com/beauty/",
     "category": "BEAUTY"
   },
@@ -6040,7 +5744,7 @@
     "category": "BEAUTY"
   },
   {
-    "url": "https://www.maybelline.com/beauty-trends",
+    "url": "https://www.maybelline.com/makeup-trends",
     "category": "BEAUTY"
   },
   {
@@ -6180,10 +5884,6 @@
     "category": "MUSIC"
   },
   {
-    "url": "https://www.guitarcenter.com/gc-pro/",
-    "category": "MUSIC"
-  },
-  {
     "url": "https://www.fender.com/articles/",
     "category": "MUSIC"
   },
@@ -6273,10 +5973,6 @@
   },
   {
     "url": "https://www.gramophone.co.uk/",
-    "category": "MUSIC"
-  },
-  {
-    "url": "https://www.operanews.com/",
     "category": "MUSIC"
   },
   {
@@ -6444,7 +6140,7 @@
     "category": "FITNESS"
   },
   {
-    "url": "https://www.acefitness.org/education-and-resources/",
+    "url": "https://www.acefitness.org/resources/everyone/blog/",
     "category": "FITNESS"
   },
   {
@@ -6476,7 +6172,7 @@
     "category": "FITNESS"
   },
   {
-    "url": "https://www.mindbodygreen.com/fitness",
+    "url": "https://www.mindbodygreen.com/movement",
     "category": "FITNESS"
   },
   {
@@ -6600,10 +6296,6 @@
     "category": "FITNESS"
   },
   {
-    "url": "https://www.soulcycle.com/soul-matters/",
-    "category": "FITNESS"
-  },
-  {
     "url": "https://www.barrys.com/blog/",
     "category": "FITNESS"
   },
@@ -6613,14 +6305,6 @@
   },
   {
     "url": "https://www.clubpilates.com/blog",
-    "category": "FITNESS"
-  },
-  {
-    "url": "https://romwod.com/blog/",
-    "category": "FITNESS"
-  },
-  {
-    "url": "https://www.mobilitywod.com/",
     "category": "FITNESS"
   },
   {
@@ -6772,10 +6456,6 @@
     "category": "ENTERTAINMENT"
   },
   {
-    "url": "https://www.hulu.com/hub/new-this-month",
-    "category": "ENTERTAINMENT"
-  },
-  {
     "url": "https://www.peacocktv.com/",
     "category": "ENTERTAINMENT"
   },
@@ -6845,10 +6525,6 @@
   },
   {
     "url": "https://www.vulture.com/comedy/",
-    "category": "ENTERTAINMENT"
-  },
-  {
-    "url": "https://comedybangbang.com/",
     "category": "ENTERTAINMENT"
   },
   {
@@ -7000,19 +6676,11 @@
     "category": "FOOD"
   },
   {
-    "url": "https://www.doordash.com/blog/",
-    "category": "FOOD"
-  },
-  {
     "url": "https://www.ubereats.com/",
     "category": "FOOD"
   },
   {
     "url": "https://www.grubhub.com/blog/",
-    "category": "FOOD"
-  },
-  {
-    "url": "https://www.instacart.com/company/ideas-and-guides/",
     "category": "FOOD"
   },
   {
@@ -7024,7 +6692,7 @@
     "category": "FOOD"
   },
   {
-    "url": "https://www.blueapron.com/pages/sample-recipes",
+    "url": "https://www.blueapron.com/cookbook",
     "category": "FOOD"
   },
   {
@@ -7160,10 +6828,6 @@
     "category": "FOOD"
   },
   {
-    "url": "https://www.costco.com/connection.html",
-    "category": "FOOD"
-  },
-  {
     "url": "https://www.foodnetwork.com/restaurants",
     "category": "FOOD"
   },
@@ -7209,10 +6873,6 @@
   },
   {
     "url": "https://www.specialtyfood.com/",
-    "category": "FOOD"
-  },
-  {
-    "url": "https://www.cheeserank.com/",
     "category": "FOOD"
   },
   {
@@ -7400,15 +7060,11 @@
     "category": "POLITICS"
   },
   {
-    "url": "https://www.pewresearch.org/politics/",
-    "category": "POLITICS"
-  },
-  {
     "url": "https://www.pewresearch.org/global/",
     "category": "POLITICS"
   },
   {
-    "url": "https://news.gallup.com/poll/politics.aspx",
+    "url": "https://news.gallup.com/topic/politics.aspx",
     "category": "POLITICS"
   },
   {
@@ -7536,7 +7192,7 @@
     "category": "SCIENCE"
   },
   {
-    "url": "https://www.jwst.nasa.gov/",
+    "url": "https://jwst.nasa.gov/",
     "category": "SCIENCE"
   },
   {
@@ -7708,10 +7364,6 @@
     "category": "SCIENCE"
   },
   {
-    "url": "https://www.montereyaquarium.org/",
-    "category": "SCIENCE"
-  },
-  {
     "url": "https://www.nhm.ac.uk/",
     "category": "SCIENCE"
   },
@@ -7880,10 +7532,6 @@
     "category": "BUSINESS"
   },
   {
-    "url": "https://fortune.com/section/small-business/",
-    "category": "BUSINESS"
-  },
-  {
     "url": "https://www.wsj.com/news/business",
     "category": "BUSINESS"
   },
@@ -8017,10 +7665,6 @@
   },
   {
     "url": "https://www.xero.com/blog/",
-    "category": "BUSINESS"
-  },
-  {
-    "url": "https://www.wave-apps.com/blog/",
     "category": "BUSINESS"
   },
   {
@@ -8184,7 +7828,7 @@
     "category": "OUTDOOR_RECREATION"
   },
   {
-    "url": "https://www.outsideonline.com/outdoor-adventure/camping/",
+    "url": "https://www.outsideonline.com/outdoor-adventure/",
     "category": "OUTDOOR_RECREATION"
   },
   {
@@ -8320,7 +7964,7 @@
     "category": "OUTDOOR_RECREATION"
   },
   {
-    "url": "https://www.americancanoe.org/",
+    "url": "https://americancanoe.org/",
     "category": "OUTDOOR_RECREATION"
   },
   {
@@ -8380,15 +8024,11 @@
     "category": "OUTDOOR_RECREATION"
   },
   {
-    "url": "https://www.50campfires.com/",
-    "category": "OUTDOOR_RECREATION"
-  },
-  {
     "url": "https://www.survivalistboards.com/",
     "category": "OUTDOOR_RECREATION"
   },
   {
-    "url": "https://www.artofmanliness.com/living/outdoor-survival/",
+    "url": "https://www.artofmanliness.com/skills/outdoors/",
     "category": "OUTDOOR_RECREATION"
   },
   {
@@ -8421,10 +8061,6 @@
   },
   {
     "url": "https://www.michaels.com/projects",
-    "category": "CRAFTS"
-  },
-  {
-    "url": "https://www.hobbylobby.com/DIY-Projects-Videos/",
     "category": "CRAFTS"
   },
   {
@@ -8532,7 +8168,7 @@
     "category": "CRAFTS"
   },
   {
-    "url": "https://www.marthastewart.com/1502083/crafts",
+    "url": "https://www.marthastewart.com/1502461/diy-projects-crafts",
     "category": "CRAFTS"
   },
   {
@@ -8556,10 +8192,6 @@
     "category": "CRAFTS"
   },
   {
-    "url": "https://www.paperandstitch.com/",
-    "category": "CRAFTS"
-  },
-  {
     "url": "https://liagriffith.com/",
     "category": "CRAFTS"
   },
@@ -8580,7 +8212,7 @@
     "category": "CRAFTS"
   },
   {
-    "url": "https://www.firemountaingems.com/resources/",
+    "url": "https://www.firemountaingems.com/learn/categories/essential-jewelry-making-resources.html",
     "category": "CRAFTS"
   },
   {
@@ -8600,10 +8232,6 @@
     "category": "CRAFTS"
   },
   {
-    "url": "https://www.theglassblowingshop.com/",
-    "category": "CRAFTS"
-  },
-  {
     "url": "https://www.leatherworker.net/",
     "category": "CRAFTS"
   },
@@ -8616,7 +8244,7 @@
     "category": "CRAFTS"
   },
   {
-    "url": "https://www.dmc.com/us/patterns-and-projects-9/",
+    "url": "https://www.dmc.com/patterns",
     "category": "CRAFTS"
   },
   {
@@ -8724,7 +8352,7 @@
     "category": "HISTORY"
   },
   {
-    "url": "https://www.pbs.org/history/",
+    "url": "https://www.pbs.org/explore/history/",
     "category": "HISTORY"
   },
   {
@@ -8800,7 +8428,7 @@
     "category": "HISTORY"
   },
   {
-    "url": "https://www.nmai.si.edu/",
+    "url": "https://americanindian.si.edu/",
     "category": "HISTORY"
   },
   {
@@ -8913,10 +8541,6 @@
   },
   {
     "url": "https://www.epa.gov/climate-change",
-    "category": "ENVIRONMENT"
-  },
-  {
-    "url": "https://www.epa.gov/recyclefoodwaste",
     "category": "ENVIRONMENT"
   },
   {
@@ -9316,10 +8940,6 @@
     "category": "MILITARY_DEFENSE"
   },
   {
-    "url": "https://www.defense.gov/Experience/Military-History/",
-    "category": "MILITARY_DEFENSE"
-  },
-  {
     "url": "https://www.history.army.mil/",
     "category": "MILITARY_DEFENSE"
   },
@@ -9340,7 +8960,7 @@
     "category": "MILITARY_DEFENSE"
   },
   {
-    "url": "https://www.smithsonianmag.com/air-space-magazine/",
+    "url": "https://www.smithsonianmag.com/blogs/air-space-museum/",
     "category": "MILITARY_DEFENSE"
   },
   {
@@ -9408,11 +9028,7 @@
     "category": "WELLNESS_ALTERNATIVE"
   },
   {
-    "url": "https://www.mindbodygreen.com/articles/meditation",
-    "category": "WELLNESS_ALTERNATIVE"
-  },
-  {
-    "url": "https://www.mindbodygreen.com/articles/spirituality",
+    "url": "https://www.mindbodygreen.com/spirituality",
     "category": "WELLNESS_ALTERNATIVE"
   },
   {
@@ -9441,10 +9057,6 @@
   },
   {
     "url": "https://chopra.com/",
-    "category": "WELLNESS_ALTERNATIVE"
-  },
-  {
-    "url": "https://chopra.com/articles/meditation",
     "category": "WELLNESS_ALTERNATIVE"
   },
   {
@@ -9544,10 +9156,6 @@
     "category": "WELLNESS_ALTERNATIVE"
   },
   {
-    "url": "https://www.banyanbotanicals.com/info/",
-    "category": "WELLNESS_ALTERNATIVE"
-  },
-  {
     "url": "https://www.iarf.org/",
     "category": "WELLNESS_ALTERNATIVE"
   },
@@ -9569,10 +9177,6 @@
   },
   {
     "url": "https://www.wellandgood.com/",
-    "category": "WELLNESS_ALTERNATIVE"
-  },
-  {
-    "url": "https://www.wellandgood.com/wellness/",
     "category": "WELLNESS_ALTERNATIVE"
   },
   {
@@ -9609,10 +9213,6 @@
   },
   {
     "url": "https://www.naturalhealthmag.com/",
-    "category": "WELLNESS_ALTERNATIVE"
-  },
-  {
-    "url": "https://www.positivelypositive.com/",
     "category": "WELLNESS_ALTERNATIVE"
   },
   {
@@ -9653,10 +9253,6 @@
   },
   {
     "url": "https://www.psychologytoday.com/us/basics/relationships",
-    "category": "RELATIONSHIPS_DATING"
-  },
-  {
-    "url": "https://www.psychologytoday.com/us/basics/dating",
     "category": "RELATIONSHIPS_DATING"
   },
   {
@@ -9716,11 +9312,11 @@
     "category": "RELATIONSHIPS_DATING"
   },
   {
-    "url": "https://www.verywellmind.com/relationships-702703",
+    "url": "https://www.verywellmind.com/relationships-4157190",
     "category": "RELATIONSHIPS_DATING"
   },
   {
-    "url": "https://www.mindbodygreen.com/articles/relationships",
+    "url": "https://www.mindbodygreen.com/relationships",
     "category": "RELATIONSHIPS_DATING"
   },
   {
@@ -9728,7 +9324,7 @@
     "category": "RELATIONSHIPS_DATING"
   },
   {
-    "url": "https://www.bustle.com/relationships",
+    "url": "https://www.bustle.com/sex-and-relationships",
     "category": "RELATIONSHIPS_DATING"
   },
   {
@@ -9816,19 +9412,7 @@
     "category": "RELATIONSHIPS_DATING"
   },
   {
-    "url": "https://www.divorcemag.com/",
-    "category": "RELATIONSHIPS_DATING"
-  },
-  {
     "url": "https://www.survivinginfidelity.com/",
-    "category": "RELATIONSHIPS_DATING"
-  },
-  {
-    "url": "https://www.healthline.com/health/relationships",
-    "category": "RELATIONSHIPS_DATING"
-  },
-  {
-    "url": "https://www.verywellmind.com/how-to-make-friends-702764",
     "category": "RELATIONSHIPS_DATING"
   },
   {
