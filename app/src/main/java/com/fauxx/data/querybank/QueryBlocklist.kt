@@ -115,6 +115,28 @@ class QueryBlocklist @Inject constructor(
     }
 
     /**
+     * Stricter gate for USER-SUPPLIED search terms (#328): `true` if [query] is blocked by the
+     * active locale's list OR by any other locale's list.
+     *
+     * Built-in corpora are written in the active noise language, so the active list is the right
+     * one for them. A user's own terms are typed in whatever language they live in, which need
+     * not be the noise language (a Russian speaker in France running Fauxx in French), so a crisis
+     * phrase in a language other than the active one would slip past [isBlocked] alone. Checking
+     * every shipped list closes that for the four reviewed languages. Fails closed like
+     * [isBlocked]: a locale whose list failed to load blocks everything.
+     */
+    fun isBlockedInAnyLocale(query: String): Boolean {
+        if (isBlocked(query)) return true
+        val normalized = normalizeForMatch(query)
+        return SupportedLocale.entries.any { locale ->
+            val data = perLocale.computeIfAbsent(locale) { loadFor(it) }
+            data.loadFailed ||
+                data.phraseTerms.any { normalized.contains(it) } ||
+                data.regexes.any { it.containsMatchIn(normalized) }
+        }
+    }
+
+    /**
      * Canonicalize text before matching so common evasion tricks cannot smuggle a harmful
      * phrase past the substring/regex guard:
      *  - NFKC folds compatibility forms (fullwidth letters/digits, ligatures) to their

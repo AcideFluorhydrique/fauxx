@@ -5,6 +5,9 @@ import androidx.annotation.Keep
 import androidx.annotation.VisibleForTesting
 import dagger.hilt.android.qualifiers.ApplicationContext
 import timber.log.Timber
+import com.fauxx.data.custompool.CustomPoolMixer
+import com.fauxx.data.custompool.CustomPoolSource
+import com.fauxx.data.custompool.CustomPoolValidator
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.locale.LocaleManager
 import com.fauxx.locale.SupportedLocale
@@ -37,6 +40,14 @@ private const val CLEANUP_THRESHOLD = 500
  * - Skips URLs and domains that keep failing ([UrlHealthGate], #353), falling back to other
  *   categories and then to ignoring that memory rather than stalling.
  *
+ * User-added sites (#328): when the user has added their own sites, a size-scaled share of
+ * selections ([CustomPoolMixer]) draws from them instead, independently of [category]. They pass
+ * the same [DomainBlocklist] check as built-in URLs plus [CustomPoolValidator.isDispatchableUrl],
+ * and share the per-domain rate limit. They are NOT curated hosts ([isCuratedHost]): that
+ * allow-list is the reviewed corpus only, so a user entry never widens which live-SERP results
+ * the search module may follow. When every custom site is cooling down, the built-in corpus
+ * serves the action as usual.
+ *
  * The crawl list is locale-keyed because data brokers fingerprint domain mix as a
  * region indicator: a Spanish-mode profile should hit elmundo.es and mercadolibre,
  * not exclusively webmd.com and espn.com. The rate-limit map is shared across locales
@@ -50,6 +61,7 @@ class CrawlListManager @Inject constructor(
     private val clock: Clock = SystemClockImpl(),
     private val random: Random = Random.Default,
     private val urlHealth: UrlHealthGate = UrlHealthGate.NONE,
+    private val customPool: CustomPoolSource = CustomPoolSource.EMPTY,
 ) {
     private val urlsByLocale = ConcurrentHashMap<SupportedLocale, List<CrawlEntry>>()
     private val lastVisitByDomain = mutableMapOf<String, Long>()
@@ -67,6 +79,10 @@ class CrawlListManager @Inject constructor(
     fun nextUrl(category: CategoryPool? = null): CrawlEntry? {
         val now = clock.currentTimeMillis()
         cleanupStaleEntries(now)
+        val customSites = customPool.sites()
+        if (CustomPoolMixer.drawCustom(customSites.size, random)) {
+            nextCustomUrl(customSites, category, now)?.let { return it }
+        }
         return candidatePool(category)
             .filter { entry -> isEligible(entry.domain, now) }
             .randomOrNull(random)
@@ -130,6 +146,25 @@ class CrawlListManager @Inject constructor(
 
     private fun isHealthy(entry: CrawlEntry): Boolean =
         runCatching { !urlHealth.isSuppressed(entry.url, entry.domain) }.getOrDefault(true)
+
+    /**
+     * A user-added site that passes the safety gates and is off cooldown, or null. The entry
+     * carries the requested [category] (or the first category when none was requested) only
+     * because [CrawlEntry.category] is non-null; custom sites are not categorised and are drawn
+     * without regard to it.
+     */
+    private fun nextCustomUrl(sites: List<String>, category: CategoryPool?, now: Long): CrawlEntry? =
+        sites.asSequence()
+            .filter { CustomPoolValidator.isDispatchableUrl(it) && !blocklist.isUrlBlocked(it) }
+            .mapNotNull { url ->
+                CustomPoolValidator.hostOf(url)?.let { host ->
+                    CrawlEntry(url, host, category ?: CategoryPool.entries.first(), isCustom = true)
+                }
+            }
+            .filter { isHealthy(it) && isEligible(it.domain, now) }
+            .toList()
+            .randomOrNull(random)
+            ?.also { lastVisitByDomain[it.domain] = now }
 
     /** Mark a domain as visited at [timestamp]. */
     fun markVisited(domain: String, timestamp: Long = clock.currentTimeMillis()) {
@@ -225,11 +260,17 @@ data class PendingCrawlEntry(
     val waitMs: Long
 )
 
-/** A single URL entry in the crawl corpus. */
+/**
+ * A single URL entry in the crawl corpus.
+ *
+ * [isCustom] marks a site the user added themselves (#328). Modules use it to keep the address out
+ * of the debug log and to tag the action-log entry; it is otherwise visited like any other entry.
+ */
 data class CrawlEntry(
     val url: String,
     val domain: String,
-    val category: CategoryPool
+    val category: CategoryPool,
+    val isCustom: Boolean = false,
 )
 
 /**

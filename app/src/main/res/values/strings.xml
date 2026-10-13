@@ -359,6 +359,37 @@
     <string name="settings_export_debug_logs_button">Export Debug Logs</string>
     <string name="settings_about_privacy_button">About &amp; Privacy Policy</string>
     <string name="settings_lan_sync_button">LAN Sync</string>
+    <!-- Your own searches and sites (#328) -->
+    <string name="custom_pool_title">Your searches and sites</string>
+    <string name="custom_pool_settings_description">Add your own search terms and websites, such as local news sites and searches in your language, so the noise looks like it comes from where you live.</string>
+    <string name="custom_pool_settings_button">Edit your searches and sites</string>
+    <string name="custom_pool_intro">Fauxx\'s built-in searches and sites cover English, Spanish, French and Russian. Add your own, such as local news sites and searches in your language, so the noise looks like it comes from where you live. Each entry sends %1$d%% of searches or site visits to your list, up to %2$d%%; the built-in lists cover the rest. Your entries are checked against the same safety lists as the built-in ones, stay encrypted on this phone, and are not synced to your other devices.</string>
+    <string name="custom_pool_tab_searches">Searches</string>
+    <string name="custom_pool_tab_sites">Websites</string>
+    <string name="custom_pool_input_searches">Search terms, one per line</string>
+    <string name="custom_pool_input_sites">Website addresses, one per line</string>
+    <string name="custom_pool_placeholder_searches">weather tomorrow\nlocal elections results</string>
+    <string name="custom_pool_placeholder_sites">example-news.com\nhttps://example.org/local</string>
+    <string name="custom_pool_add_button">Add</string>
+    <string name="custom_pool_count">%1$d of %2$d</string>
+    <string name="custom_pool_empty_searches">No search terms yet.</string>
+    <string name="custom_pool_empty_sites">No websites yet.</string>
+    <string name="custom_pool_clear_button">Remove all</string>
+    <string name="custom_pool_clear_dialog_title">Remove all entries?</string>
+    <string name="custom_pool_clear_dialog_body_searches">Every search term in your list will be removed.</string>
+    <string name="custom_pool_clear_dialog_body_sites">Every website in your list will be removed.</string>
+    <string name="custom_pool_remove_content_desc">Remove %1$s</string>
+    <string name="custom_pool_result_added">Added: %1$d.</string>
+    <string name="custom_pool_result">Added: %1$d. Not added: %2$d.</string>
+    <string name="custom_pool_reason_too_long">Too long (maximum length: %1$d).</string>
+    <string name="custom_pool_reason_invalid_characters">Contains tabs or other control characters.</string>
+    <string name="custom_pool_reason_not_web_address">Not a web address. Only http:// and https:// addresses work.</string>
+    <string name="custom_pool_reason_credentials">Addresses with a user name or password are not allowed.</string>
+    <string name="custom_pool_reason_local_address">Addresses on a local network (IP addresses, localhost, .lan, .local and similar) are not allowed.</string>
+    <string name="custom_pool_reason_blocked_search">Blocked by Fauxx\'s safety list. Terms that could look like a crisis or attract legal attention are never searched.</string>
+    <string name="custom_pool_reason_blocked_site">This site is on Fauxx\'s blocklist.</string>
+    <string name="custom_pool_reason_duplicate">Already in your list.</string>
+    <string name="custom_pool_reason_limit">The list is full (limit: %1$d).</string>
     <string name="settings_version_info">Fauxx v%1$s (build %2$d)</string>
 
     <!-- LAN sync screen (E13 #178) -->

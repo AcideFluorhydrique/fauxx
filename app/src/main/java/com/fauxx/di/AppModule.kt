@@ -18,6 +18,7 @@ import com.fauxx.data.db.MIGRATION_4_5
 import com.fauxx.data.db.MIGRATION_5_6
 import com.fauxx.data.db.MIGRATION_6_7
 import com.fauxx.data.db.MIGRATION_7_8
+import com.fauxx.data.db.MIGRATION_8_9
 import com.fauxx.data.db.PhantomDatabase
 import com.fauxx.sync.data.PairedPeerDao
 import com.fauxx.sync.data.SyncedPersonaDao
@@ -83,7 +84,7 @@ object AppModule {
             "phantom.db"
         )
             .openHelperFactory(factory)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .build()
     }
 
@@ -239,4 +240,9 @@ object AppModule {
     @Singleton
     fun provideSyncedPersonaDao(db: PhantomDatabase): SyncedPersonaDao =
         db.syncedPersonaDao()
+
+    @Provides
+    @Singleton
+    fun provideCustomPoolDao(db: PhantomDatabase): com.fauxx.data.custompool.CustomPoolDao =
+        db.customPoolDao()
 }

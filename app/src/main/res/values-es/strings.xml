@@ -364,6 +364,37 @@
     <string name="settings_export_debug_logs_button">Exportar registros de depuración</string>
     <string name="settings_about_privacy_button">Información y política de privacidad</string>
     <string name="settings_lan_sync_button">Sincronización LAN</string>
+    <!-- Your own searches and sites (#328) -->
+    <string name="custom_pool_title">Tus búsquedas y sitios</string>
+    <string name="custom_pool_settings_description">Añade tus propias búsquedas y sitios web, como periódicos locales y búsquedas en tu idioma, para que el ruido parezca venir de donde vives.</string>
+    <string name="custom_pool_settings_button">Editar tus búsquedas y sitios</string>
+    <string name="custom_pool_intro">Las búsquedas y sitios integrados de Fauxx cubren inglés, español, francés y ruso. Añade los tuyos, como periódicos locales y búsquedas en tu idioma, para que el ruido parezca venir de donde vives. Cada entrada dirige un %1$d%% de las búsquedas o visitas a tu lista, hasta un %2$d%%; las listas integradas cubren el resto. Tus entradas pasan por las mismas listas de seguridad que las integradas, se guardan cifradas en este teléfono y no se sincronizan con tus otros dispositivos.</string>
+    <string name="custom_pool_tab_searches">Búsquedas</string>
+    <string name="custom_pool_tab_sites">Sitios web</string>
+    <string name="custom_pool_input_searches">Búsquedas, una por línea</string>
+    <string name="custom_pool_input_sites">Direcciones web, una por línea</string>
+    <string name="custom_pool_placeholder_searches">tiempo mañana\nresultados elecciones municipales</string>
+    <string name="custom_pool_placeholder_sites">periodico-ejemplo.es\nhttps://example.org/local</string>
+    <string name="custom_pool_add_button">Añadir</string>
+    <string name="custom_pool_count">%1$d de %2$d</string>
+    <string name="custom_pool_empty_searches">Aún no hay búsquedas.</string>
+    <string name="custom_pool_empty_sites">Aún no hay sitios web.</string>
+    <string name="custom_pool_clear_button">Quitar todo</string>
+    <string name="custom_pool_clear_dialog_title">¿Quitar todas las entradas?</string>
+    <string name="custom_pool_clear_dialog_body_searches">Se quitarán todas las búsquedas de tu lista.</string>
+    <string name="custom_pool_clear_dialog_body_sites">Se quitarán todos los sitios web de tu lista.</string>
+    <string name="custom_pool_remove_content_desc">Quitar %1$s</string>
+    <string name="custom_pool_result_added">Añadidas: %1$d.</string>
+    <string name="custom_pool_result">Añadidas: %1$d. No añadidas: %2$d.</string>
+    <string name="custom_pool_reason_too_long">Demasiado larga (límite por entrada: %1$d).</string>
+    <string name="custom_pool_reason_invalid_characters">Contiene tabulaciones u otros caracteres de control.</string>
+    <string name="custom_pool_reason_not_web_address">No es una dirección web. Solo sirven direcciones http:// y https://.</string>
+    <string name="custom_pool_reason_credentials">No se permiten direcciones con nombre de usuario o contraseña.</string>
+    <string name="custom_pool_reason_local_address">No se permiten direcciones de una red local (direcciones IP, localhost, .lan, .local y similares).</string>
+    <string name="custom_pool_reason_blocked_search">Bloqueada por la lista de seguridad de Fauxx. Nunca se buscan términos que puedan parecer una crisis o atraer atención legal.</string>
+    <string name="custom_pool_reason_blocked_site">Este sitio está en la lista de bloqueo de Fauxx.</string>
+    <string name="custom_pool_reason_duplicate">Ya está en tu lista.</string>
+    <string name="custom_pool_reason_limit">La lista está llena (límite: %1$d).</string>
 
     <!-- LAN sync screen (E13 #178) -->
     <string name="sync_enable_title">Activar sincronización por LAN</string>

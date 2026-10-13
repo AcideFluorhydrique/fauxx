@@ -79,6 +79,7 @@ class SearchPoisonModuleTest {
         random: kotlin.random.Random = bankBranchRandom,
         clock: com.fauxx.util.Clock = com.fauxx.support.FakeClock(0L),
         engineHealth: com.fauxx.data.crawllist.SearchEngineHealth = com.fauxx.data.crawllist.SearchEngineHealth.NONE,
+        customPool: com.fauxx.data.custompool.CustomPoolSource = com.fauxx.data.custompool.CustomPoolSource.EMPTY,
     ) = SearchPoisonModule(
         queryBankManager = queryBankManager,
         grammarGenerator = grammarGenerator,
@@ -90,6 +91,7 @@ class SearchPoisonModuleTest {
         queryBlocklist = queryBlocklist,
         localeManager = localeManager,
         crawlListManager = crawlListManager,
+        customPool = customPool,
         clock = clock,
         // nextFloat()=0.99 forces the query-bank branch (never calls grammarGenerator.generate);
         // nextBits()=0 makes SEARCH_ENGINES.random(this) deterministic (first engine = google)
@@ -585,5 +587,75 @@ class SearchPoisonModuleTest {
         assertEquals(listOf("bing", "yandex"), selectableSearchEngines(listOf("google", "bing", "yandex")) { it == "google" })
         assertEquals(emptyList<String>(), selectableSearchEngines(listOf("google")) { true })
         assertEquals("a broken health check never removes an engine", listOf("google"), selectableSearchEngines(listOf("google")) { error("x") })
+    }
+
+    // ---- #328: the user's own search terms ----
+
+    /** nextFloat()=0 is below any non-zero custom share, so the session goal is a custom term. */
+    private val customBranchRandom = object : kotlin.random.Random() {
+        override fun nextBits(bitCount: Int): Int = 0
+        override fun nextFloat(): Float = 0f
+    }
+
+    @Test
+    fun `a custom term is dispatched as the goal, tagged, without refinements`() = runTest(testDispatcher) {
+        safeSession("built-in query that must not be used")
+        every { queryBlocklist.isBlockedInAnyLocale(any()) } returns false
+        // The SERP title echoes the query; it must not survive into a custom session's metadata.
+        every { webViewPool.captureMetadata(any(), any(), *anyVararg()) } returns
+            com.fauxx.data.db.LogMetadata.toJson(
+                com.fauxx.data.db.LogMetadata.PAGE_TITLE to "Wetter Leipzig morgen - Google",
+                com.fauxx.data.db.LogMetadata.SEARCH_ENGINE to "google",
+            )
+        val (urls, _) = captureLoads()
+
+        val result = newModule(
+            random = customBranchRandom,
+            customPool = com.fauxx.data.custompool.CustomPoolSource.of(searches = listOf("Wetter Leipzig morgen")),
+        ).onAction(CategoryPool.GAMING)
+
+        assertEquals("only the goal is searched: no noise-language refinements", 1, urls.size)
+        assertTrue(urls.single().contains(java.net.URLEncoder.encode("Wetter Leipzig morgen", "UTF-8")))
+        assertEquals("[CUSTOM] Wetter Leipzig morgen · via google", result.detail)
+        assertTrue(
+            "metadata marks the source; was ${result.metadata}",
+            com.fauxx.data.db.LogMetadata.parse(result.metadata).contains(
+                com.fauxx.data.db.LogMetadata.SOURCE to com.fauxx.data.db.LogMetadata.SOURCE_CUSTOM
+            )
+        )
+        val meta = com.fauxx.data.db.LogMetadata.parse(result.metadata).toMap()
+        assertFalse("page title dropped; was $meta", meta.containsKey(com.fauxx.data.db.LogMetadata.PAGE_TITLE))
+        assertEquals("google", meta[com.fauxx.data.db.LogMetadata.SEARCH_ENGINE])
+        verify(exactly = 0) { queryBankManager.randomQuery(any()) }
+        verify { queryBlocklist.isBlockedInAnyLocale("Wetter Leipzig morgen") }
+    }
+
+    @Test
+    fun `a custom term blocked in any language is dropped and never dispatched`() = runTest(testDispatcher) {
+        safeSession("unused")
+        // Not blocked by the active (EN) list, but by another language's list.
+        every { queryBlocklist.isBlocked(any()) } returns false
+        every { queryBlocklist.isBlockedInAnyLocale(any()) } returns true
+
+        val result = newModule(
+            random = customBranchRandom,
+            customPool = com.fauxx.data.custompool.CustomPoolSource.of(searches = listOf("help line term")),
+        ).onAction(CategoryPool.GAMING)
+
+        assertTrue(result.detail.startsWith("[BLOCKED]"))
+        assertFalse("the term must not leak into the detail", result.detail.contains("help line"))
+        coVerify(exactly = 0) { webViewPool.acquire() }
+    }
+
+    @Test
+    fun `built-in sessions never consult the every-language list`() = runTest(testDispatcher) {
+        safeSession("best mechanical keyboards 2026")
+        captureLoads()
+
+        newModule(
+            customPool = com.fauxx.data.custompool.CustomPoolSource.of(searches = listOf("x")),
+        ).onAction(CategoryPool.GAMING)
+
+        verify(exactly = 0) { queryBlocklist.isBlockedInAnyLocale(any()) }
     }
 }

@@ -6,6 +6,9 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.fauxx.data.custompool.CustomPoolDao
+import com.fauxx.data.custompool.CustomPoolEntry
+import com.fauxx.data.custompool.CustomPoolKind
 import com.fauxx.data.model.ActionType
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.scheduling.CircadianUsageDao
@@ -36,6 +39,7 @@ import com.fauxx.targeting.layer3.PersonaHistoryEntity
  * - circadian_usage: Locally-observed screen-on histogram by hour of day (E10 #177)
  * - paired_peers: Devices paired for encrypted LAN persona sync (E13 #178)
  * - synced_personas: Inbound synced personas, keyed on persona id for idempotent upsert (E13 #178)
+ * - custom_pool_entries: The user's own searches and sites added to the noise pool (#328)
  */
 @Database(
     entities = [
@@ -46,9 +50,10 @@ import com.fauxx.targeting.layer3.PersonaHistoryEntity
         PersonaHistoryEntity::class,
         CircadianUsageEntity::class,
         PairedPeerEntity::class,
-        SyncedPersonaEntity::class
+        SyncedPersonaEntity::class,
+        CustomPoolEntry::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(PhantomTypeConverters::class)
@@ -61,6 +66,7 @@ abstract class PhantomDatabase : RoomDatabase() {
     abstract fun circadianUsageDao(): CircadianUsageDao
     abstract fun pairedPeerDao(): PairedPeerDao
     abstract fun syncedPersonaDao(): SyncedPersonaDao
+    abstract fun customPoolDao(): CustomPoolDao
 }
 
 /** Migration from v1 to v2: add composite index on action_log(timestamp, success). */
@@ -154,6 +160,27 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+/**
+ * Migration from v8 to v9: add the user's own searches and sites (#328).
+ *
+ * Mirrors Room's generated v9 schema exactly (column order, NOT NULL, the autoincrement key and the
+ * unique (kind, value) index) so open-time schema validation passes. Purely additive: no existing
+ * table is touched.
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `custom_pool_entries` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, " +
+                "`value` TEXT NOT NULL, `addedAt` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_custom_pool_entries_kind_value` " +
+                "ON `custom_pool_entries` (`kind`, `value`)"
+        )
+    }
+}
+
 /** Room type converters for enum types. */
 class PhantomTypeConverters {
     @TypeConverter
@@ -184,4 +211,13 @@ class PhantomTypeConverters {
     @TypeConverter
     fun toSnapshotSeries(value: String): SnapshotSeries =
         runCatching { SnapshotSeries.valueOf(value) }.getOrDefault(SnapshotSeries.POISONED)
+
+    @TypeConverter
+    fun fromCustomPoolKind(value: CustomPoolKind): String = value.name
+
+    // An unknown kind (a row from a newer build after a downgrade) reads as a search: searches are
+    // re-gated through the query blocklist at dispatch, so that is the safe direction.
+    @TypeConverter
+    fun toCustomPoolKind(value: String): CustomPoolKind =
+        runCatching { CustomPoolKind.valueOf(value) }.getOrDefault(CustomPoolKind.SEARCH)
 }

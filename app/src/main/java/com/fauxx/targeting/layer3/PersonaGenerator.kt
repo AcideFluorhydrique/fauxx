@@ -284,13 +284,8 @@ class PersonaGenerator @Inject constructor(
         )
     }
 
-    private fun generateName(): String {
-        val firstNames = listOf("Alex", "Morgan", "Jordan", "Taylor", "Casey", "Riley",
-            "Drew", "Jamie", "Avery", "Peyton", "Sam", "Chris", "Dana", "Pat", "Jesse")
-        val lastNames = listOf("Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
-            "Davis", "Wilson", "Anderson", "Taylor", "Thomas", "Jackson", "White", "Harris")
-        return "${firstNames.random(random)} ${lastNames.random(random)}"
-    }
+    /** A name that fits the noise locale (#328): see [PersonaNames]. */
+    private fun generateName(): String = PersonaNames.generate(localeManager.currentLocale, random)
 
     private fun pickAgeRange(): String = AgeRange.entries.random(random).name
 

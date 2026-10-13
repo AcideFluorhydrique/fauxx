@@ -1,6 +1,8 @@
 package com.fauxx.engine.modules
 
 import timber.log.Timber
+import com.fauxx.data.custompool.CustomPoolMixer
+import com.fauxx.data.custompool.CustomPoolSource
 import com.fauxx.data.db.ActionLogEntity
 import com.fauxx.data.db.LogMetadata
 import com.fauxx.data.model.ActionType
@@ -188,6 +190,14 @@ internal object SearchChallenge {
  * page is open, its own redirects/JS navigations are gated by the denylist only, the
  * same trust extended to every other module that loads corpus pages. The corpus
  * (reviewed editorial publishers, no open redirectors or UGC hosts) is the trust root.
+ *
+ * **User-added searches (#328)**: when the user has added their own search terms, a size-scaled
+ * share of sessions ([CustomPoolMixer]) uses one of them as the goal instead, regardless of the
+ * dispatched category. Such a goal must ALSO pass [QueryBlocklist.isBlockedInAnyLocale], since the
+ * user may type in a language other than the active noise language. Custom goals get no
+ * refinements (the refinement templates are in the noise language and would wrap a term typed in
+ * another one), are tagged [CUSTOM_TAG] in the action-log detail (whose export coarsening still
+ * applies), and their text never reaches the debug log, not even on the invariant-violation path.
  */
 @Singleton
 class SearchPoisonModule @Inject constructor(
@@ -201,6 +211,7 @@ class SearchPoisonModule @Inject constructor(
     private val queryBlocklist: QueryBlocklist,
     private val localeManager: LocaleManager,
     private val crawlListManager: com.fauxx.data.crawllist.CrawlListManager,
+    private val customPool: CustomPoolSource = CustomPoolSource.EMPTY,
     private val clock: com.fauxx.util.Clock = com.fauxx.util.SystemClockImpl(),
     private val random: Random = Random.Default,
     // #353: engines that answered with a bot check are skipped for a while.
@@ -252,7 +263,13 @@ class SearchPoisonModule @Inject constructor(
         // Session goal. Use the grammar generator 60% of the time for natural-looking, per-install
         // styled queries (E5 #179); the rest are raw corpus picks. The grammar wraps Markov/corpus
         // heads, so this keeps naturalness while breaking the shared-corpus fleet signature.
-        val goal = if (random.nextFloat() < 0.60f) {
+        // #328: some sessions start from the user's own search terms instead. No randomness is
+        // drawn when the user has none, so the built-in path is unchanged for them.
+        val customSearches = customPool.searches()
+        val isCustom = CustomPoolMixer.drawCustom(customSearches.size, random)
+        val goal = if (isCustom) {
+            customSearches.random(random)
+        } else if (random.nextFloat() < 0.60f) {
             grammarGenerator.generate(category)
         } else {
             queryBankManager.randomQuery(category)
@@ -261,13 +278,20 @@ class SearchPoisonModule @Inject constructor(
         // Final safety gate on the goal. If a query reaches here matching the blocklist,
         // upstream filters (QueryBankManager load-time filter + GrammarQueryGenerator
         // resample) have failed — log the invariant violation and drop the cycle.
-        if (goal.isBlank() || queryBlocklist.isBlocked(goal)) {
-            Timber.e(
-                "QueryBlocklist invariant violation — query '%s' escaped upstream " +
-                    "guards; dropping action cycle (category=%s)",
-                goal,
-                category
-            )
+        if (goal.isBlank() || queryBlocklist.isBlocked(goal) ||
+            (isCustom && queryBlocklist.isBlockedInAnyLocale(goal))
+        ) {
+            if (isCustom) {
+                // The user's own term is user data: say what happened, never what it was.
+                Timber.w("A custom search is now blocked by the safety guard; skipping it")
+            } else {
+                Timber.e(
+                    "QueryBlocklist invariant violation: query '%s' escaped upstream " +
+                        "guards; dropping action cycle (category=%s)",
+                    goal,
+                    category
+                )
+            }
             return ActionLogEntity(
                 actionType = ActionType.SEARCH_QUERY,
                 category = category,
@@ -294,7 +318,7 @@ class SearchPoisonModule @Inject constructor(
         // can verify newly-added engines (e.g. Yandex per #24) are actually firing.
         // The detail carries only the GOAL query (LogScrubber's export coarsening is
         // keyed to this exact shape); refinement texts are never logged.
-        val detail = "[$category] $goal · via ${engine.name}"
+        val detail = "${if (isCustom) CUSTOM_TAG else "[$category]"} $goal · via ${engine.name}"
 
         // Defensive blocklist gate. The search path runs through the WebView, so the
         // OkHttp BlocklistInterceptor no longer covers it (#165), and Android does NOT fire
@@ -322,7 +346,7 @@ class SearchPoisonModule @Inject constructor(
             profile.mobileIntensity?.actionsPerHour ?: 0
         )
         val (maxRefinements, maxLinks) = sessionBounds(configuredCeiling)
-        val refinements = if (maxRefinements > 0) {
+        val refinements = if (maxRefinements > 0 && !isCustom) {
             SearchRefinements.refine(goal, locale, random.nextInt(1, maxRefinements + 1), random)
         } else {
             emptyList()
@@ -442,10 +466,12 @@ class SearchPoisonModule @Inject constructor(
             actionType = ActionType.SEARCH_QUERY,
             category = category,
             detail = detail,
-            metadata = metadata ?: LogMetadata.toJson(
-                LogMetadata.SEARCH_ENGINE to engine.name,
-                LogMetadata.LOAD_FAILURE to goalFailure?.describe(),
-            ),
+            metadata = (
+                metadata ?: LogMetadata.toJson(
+                    LogMetadata.SEARCH_ENGINE to engine.name,
+                    LogMetadata.LOAD_FAILURE to goalFailure?.describe(),
+                )
+            ).let { if (isCustom) customSearchMetadata(it) else it },
             success = success,
         )
     }
@@ -471,6 +497,20 @@ class SearchPoisonModule @Inject constructor(
             }
         }.onFailure { Timber.w("Search engine health update failed: ${it.javaClass.simpleName}") }
     }
+
+    /**
+     * Metadata for a session whose goal came from the user's own list (#328): marked with its
+     * source, and without the SERP page title. That title echoes the query verbatim, and unlike
+     * the detail line it is not coarsened when the log is exported, so it would carry the user's
+     * own term into a shared export.
+     */
+    private fun customSearchMetadata(json: String?): String? =
+        LogMetadata.toJson(
+            *LogMetadata.parse(json)
+                .filterNot { it.first == LogMetadata.PAGE_TITLE }
+                .plus(LogMetadata.SOURCE to LogMetadata.SOURCE_CUSTOM)
+                .toTypedArray()
+        )
 
     /** Load [url] in [webView] and dwell like a human scanning it. Not ok on timeout/throw. */
     private suspend fun loadWithDwell(
@@ -537,6 +577,9 @@ class SearchPoisonModule @Inject constructor(
         } ?: false
 
     companion object {
+        /** Action-log detail prefix for a session whose goal came from the user's own list (#328). */
+        const val CUSTOM_TAG = "[CUSTOM]"
+
         /** Bounds a wedged SERP render so it can't hold a pool slot (replaces the OkHttp readTimeout). */
         private const val SEARCH_LOAD_TIMEOUT_MS = 30_000L
 

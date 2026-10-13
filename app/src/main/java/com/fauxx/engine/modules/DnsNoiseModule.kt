@@ -69,7 +69,8 @@ class DnsNoiseModule @Inject constructor(
                     ipCount = InetAddress.getAllByName(entry.domain).size
                     true
                 } catch (e: Exception) {
-                    Timber.d("DNS lookup failed for ${entry.domain}: ${e.message}")
+                    // A user-added site (#328) stays out of the debug log.
+                    Timber.d("DNS lookup failed for ${if (entry.isCustom) "a custom site" else entry.domain}: ${e.message}")
                     false
                 }
             }
@@ -79,7 +80,10 @@ class DnsNoiseModule @Inject constructor(
             actionType = ActionType.DNS_LOOKUP,
             category = category,
             detail = entry.domain,
-            metadata = LogMetadata.toJson(LogMetadata.DNS_IPS to ipCount?.toString()),
+            metadata = LogMetadata.toJson(
+                LogMetadata.DNS_IPS to ipCount?.toString(),
+                LogMetadata.SOURCE to LogMetadata.SOURCE_CUSTOM.takeIf { entry.isCustom },
+            ),
             success = success
         )
     }
