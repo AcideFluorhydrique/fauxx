@@ -13,6 +13,7 @@ import com.fauxx.data.model.SyntheticPersona
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.di.PreferenceKeys
 import com.fauxx.engine.EngineState
+import com.fauxx.engine.IntensityPolicy
 import com.fauxx.engine.PoisonEngine
 import com.fauxx.engine.PoisonProfileRepository
 import com.fauxx.service.PendingResume
@@ -131,6 +132,15 @@ data class DashboardUiState(
     /** The resume a resigned engine is waiting on (#346), set only while the switch is on, the
      *  engine is stopped and the resume is still ahead; the card then reads as paused. */
     val pendingResume: PendingResume? = null,
+    /** The level the charging boost (issue #316) is raising the Wi-Fi rate to right now, or null
+     *  when it does not apply. Shown on the status card so a change of pace has a visible cause. */
+    val chargingBoost: IntensityLevel? = null,
+)
+
+/** The profile with the charging boost it yields under the engine's current conditions (#316). */
+private data class ProfileBundle(
+    val profile: PoisonProfile,
+    val chargingBoost: IntensityLevel?,
 )
 
 /** Bundles the two snapshot-derived dashboard metrics so combine() keeps a single snapshot flow. */
@@ -317,7 +327,10 @@ class DashboardViewModel @Inject constructor(
         personaLayer.currentPersona,
         poisonEngine.healthWarnings,
         poisonEngine.engineState,
-        profileRepo.profiles,
+        // Same decision the engine paces by, so the card and the real rate cannot disagree.
+        combine(profileRepo.profiles, poisonEngine.rateConditions) { profile, conditions ->
+            ProfileBundle(profile, IntensityPolicy.chargingBoost(profile, conditions))
+        },
         profileSnapshotDao.observeAll().map { snaps ->
             DriftBundle(
                 // E2 profile-drift is the poisoned series only; control snapshots must not skew it.
@@ -338,7 +351,8 @@ class DashboardViewModel @Inject constructor(
         @Suppress("UNCHECKED_CAST")
         val warnings = flows[5] as List<String>
         val state = flows[6] as EngineState
-        val profile = flows[7] as PoisonProfile
+        val bundle = flows[7] as ProfileBundle
+        val profile = bundle.profile
         val drift = flows[8] as DriftBundle
         val pending = flows[9] as PendingResume?
         DashboardUiState(
@@ -357,6 +371,7 @@ class DashboardViewModel @Inject constructor(
             hasControlSeries = drift.hasControl,
             mobileIntensity = profile.mobileIntensity,
             pendingResume = pendingResumeShown(enabled, state, pending),
+            chargingBoost = bundle.chargingBoost,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardUiState())
 

@@ -272,6 +272,69 @@ fun SettingsScreen(
             }
         }
 
+        // Wi-Fi intensity while charging (issue #316): a boost over the Wi-Fi tier while plugged
+        // in. Never touches mobile data or metered Wi-Fi, which keep the card above.
+        SettingsCard {
+            Text(stringResource(R.string.settings_charging_intensity_title), style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                (listOf<IntensityLevel?>(null) + IntensityLevel.values()).forEach { level ->
+                    Button(
+                        onClick = { viewModel.setChargingIntensity(level) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uiState.chargingIntensity == level)
+                                MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text(
+                            text = if (level == null) stringResource(R.string.settings_intensity_off)
+                            else stringResource(level.displayNameRes()),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (uiState.chargingIntensity == level)
+                                MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+            val charging = uiState.chargingIntensity
+            Text(
+                text = when {
+                    charging == null -> stringResource(R.string.settings_charging_intensity_off_description)
+                    charging == IntensityLevel.EXTREME ->
+                        stringResource(R.string.settings_intensity_actions_per_hour_max, charging.actionsPerHour)
+                    else -> stringResource(R.string.settings_intensity_actions_per_hour, charging.actionsPerHour)
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (charging != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    // A boost never lowers the rate, so say when the choice cannot raise it.
+                    text = if (charging.actionsPerHour > uiState.intensity.actionsPerHour) {
+                        stringResource(R.string.settings_charging_intensity_description)
+                    } else {
+                        stringResource(R.string.settings_charging_intensity_not_higher)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if ((charging?.actionsPerHour ?: 0) > IntensityLevel.MEDIUM.actionsPerHour) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_intensity_detectability_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
         // Resume after reboot
         SettingsCard {
             Row(

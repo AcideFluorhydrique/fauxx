@@ -132,6 +132,35 @@ class PoisonEngineRateLimitTest {
     }
 
     @Test
+    fun `plugging in with a higher charging tier ends a rate-limit pause at once`() = runTest {
+        // #316: the drain sleep can be close to an hour. Plugging in raises the cap (LOW 12 to
+        // MEDIUM 60 here), so the pause must end on the charging change, not when the window drains.
+        engine = buildEngine(
+            FakeClock(noonEpochMs()),
+            baseProfile.copy(chargingIntensity = IntensityLevel.MEDIUM),
+            StandardTestDispatcher(testScheduler),
+        )
+        var calls = 0
+        coEvery { dnsModule.onAction(any()) } answers {
+            calls++
+            okEntry
+        }
+
+        engine.start()
+        engine.setCachedConstraintStateForTest(transport = com.fauxx.engine.NetworkTransport.WIFI, charging = false)
+        advanceVirtualTime(testScheduler, by = 20_000)
+        assertEquals(EngineState.PAUSED_RATE_LIMIT, engine.engineState.value)
+        val callsAtCap = calls
+
+        engine.setCachedConstraintStateForTest(charging = true)
+        advanceVirtualTime(testScheduler, by = 3_000)
+
+        assertTrue("dispatch must resume once charging raises the cap", calls > callsAtCap)
+
+        engine.stop()
+    }
+
+    @Test
     fun `window slides and dispatch resumes after the rate-limit hour elapses`() = runTest {
         val fakeClock = FakeClock(noonEpochMs())
         engine = buildEngine(fakeClock, baseProfile, StandardTestDispatcher(testScheduler))

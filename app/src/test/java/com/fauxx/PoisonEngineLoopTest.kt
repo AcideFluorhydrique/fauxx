@@ -525,6 +525,135 @@ class PoisonEngineLoopTest {
         assertTrue("quiet hours must still resign under Battery Saver", resignedWith is ResumeSpec.AtTime)
     }
 
+    // --- #316 charging boost ---
+
+    /** A search module that always succeeds, so the test can count actions. */
+    private fun countingSearch(): SearchPoisonModule = mockk(relaxed = true) {
+        every { isEnabled() } returns true
+        coEvery { onAction(any()) } returns ActionLogEntity(
+            actionType = ActionType.SEARCH_QUERY,
+            category = CategoryPool.GAMING,
+            detail = "ok",
+            success = true
+        )
+    }
+
+    /** Every wait after an action is ten minutes, unless the boost redraws it to two seconds. */
+    private fun slowScheduler(): PoissonScheduler = mockk {
+        every { nextDelayMs(any(), any(), any(), any(), any()) } returns 10 * 60 * 1000L
+        every { poissonDelay(any()) } returns 2_000L
+    }
+
+    @Test
+    fun `plugging in mid-wait redraws the wait at the charging tier`() = runTest {
+        val clock = FakeClock(noonEpochMs())
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val search = countingSearch()
+        val scheduler = slowScheduler()
+        engine = buildEngine(
+            clock,
+            profile = baseProfile.copy(intensity = IntensityLevel.LOW, chargingIntensity = IntensityLevel.HIGH),
+            loopDispatcher = dispatcher,
+            scheduler = scheduler,
+            searchModule = search,
+        )
+        engine.setOnLongPause { }
+        engine.start()
+        // Seed AFTER start() so registerConstraintReceivers cannot overwrite it.
+        engine.setCachedConstraintStateForTest(transport = NetworkTransport.WIFI, charging = false)
+
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 60_000)
+        coVerify(exactly = 1) { search.onAction(any()) }
+
+        engine.setCachedConstraintStateForTest(charging = true)
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 5_000)
+
+        coVerify(exactly = 2) { search.onAction(any()) }
+        verify { scheduler.poissonDelay(IntensityLevel.HIGH.actionsPerHour.toFloat()) }
+        assertTrue(engine.rateConditions.value.charging)
+        assertTrue(engine.rateConditions.value.unmetered)
+
+        engine.stop()
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 100)
+    }
+
+    @Test
+    fun `plugging in with the charging boost Off leaves the wait alone`() = runTest {
+        val clock = FakeClock(noonEpochMs())
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val search = countingSearch()
+        val scheduler = slowScheduler()
+        engine = buildEngine(
+            clock,
+            profile = baseProfile.copy(intensity = IntensityLevel.LOW, chargingIntensity = null),
+            loopDispatcher = dispatcher,
+            scheduler = scheduler,
+            searchModule = search,
+        )
+        engine.setOnLongPause { }
+        engine.start()
+        engine.setCachedConstraintStateForTest(transport = NetworkTransport.WIFI, charging = false)
+
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 60_000)
+        engine.setCachedConstraintStateForTest(charging = true)
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 60_000)
+
+        coVerify(exactly = 1) { search.onAction(any()) }
+        verify(exactly = 0) { scheduler.poissonDelay(any()) }
+
+        engine.stop()
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 100)
+    }
+
+    @Test
+    fun `plugging in on mobile data with the mobile tier Off still never acts`() = runTest {
+        // The #316 commenter cannot afford Fauxx on cellular, even while charging.
+        val clock = FakeClock(noonEpochMs())
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val search = countingSearch()
+        engine = buildEngine(
+            clock,
+            profile = baseProfile.copy(mobileIntensity = null, chargingIntensity = IntensityLevel.EXTREME),
+            loopDispatcher = dispatcher,
+            scheduler = slowScheduler(),
+            searchModule = search,
+        )
+        engine.setOnLongPause { }
+        engine.start()
+        engine.setCachedConstraintStateForTest(transport = NetworkTransport.CELLULAR, charging = true)
+
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 60_000)
+
+        assertEquals(EngineState.PAUSED_WIFI, engine.engineState.value)
+        coVerify(exactly = 0) { search.onAction(any()) }
+
+        engine.stop()
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 100)
+    }
+
+    @Test
+    fun `the charging boost does not override quiet hours`() = runTest {
+        val clock = FakeClock(threeAmEpochMs())
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val search = countingSearch()
+        engine = buildEngine(
+            clock,
+            profile = baseProfile.copy(chargingIntensity = IntensityLevel.EXTREME),
+            loopDispatcher = dispatcher,
+            scheduler = slowScheduler(),
+            searchModule = search,
+        )
+        var resignedWith: ResumeSpec? = null
+        engine.setOnLongPause { spec -> resignedWith = spec }
+        engine.start()
+        engine.setCachedConstraintStateForTest(transport = NetworkTransport.WIFI, charging = true)
+
+        advanceVirtualTime(clock, scheduler = testScheduler, by = 1_000)
+
+        assertTrue("quiet hours must still resign while charging", resignedWith is ResumeSpec.AtTime)
+        coVerify(exactly = 0) { search.onAction(any()) }
+    }
+
     private suspend fun advanceVirtualTime(
         clock: FakeClock,
         scheduler: kotlinx.coroutines.test.TestCoroutineScheduler,

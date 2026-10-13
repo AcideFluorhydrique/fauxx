@@ -89,6 +89,7 @@ class PoisonProfileRepositoryTest {
             enabled = true,                                  // default false
             intensity = IntensityLevel.HIGH,                 // default MEDIUM
             mobileIntensity = IntensityLevel.LOW,            // default null (paused on mobile)
+            chargingIntensity = IntensityLevel.EXTREME,      // default null (no charging boost)
             batteryThresholdBattery = 73,                    // default 20
             batteryThresholdCharging = 60,                   // default 20
             allowedHoursStart = 3,                           // default 7
@@ -203,6 +204,19 @@ class PoisonProfileRepositoryTest {
         }
     }
 
+    @Test
+    fun `all IntensityLevel values survive the chargingIntensity round-trip`() {
+        for (level in IntensityLevel.values()) {
+            runBlocking { repo.saveProfile(PoisonProfile(chargingIntensity = level)) }
+
+            assertEquals(
+                "chargingIntensity $level must survive the enum-name round-trip",
+                level,
+                readBack().chargingIntensity,
+            )
+        }
+    }
+
     // --- mobile_intensity persistence + lazy wifi_only migration (issue #62) ---
 
     /** Writes raw preference keys, simulating a store written by an older app version. */
@@ -278,6 +292,38 @@ class PoisonProfileRepositoryTest {
             "an unknown stored tier must never burn mobile data",
             readBack().mobileIntensity,
         )
+    }
+
+    // --- charging_intensity persistence (issue #316) ---
+
+    @Test
+    fun `null chargingIntensity persists as the OFF sentinel`() {
+        runBlocking { repo.saveProfile(PoisonProfile(chargingIntensity = null)) }
+
+        val prefs = runBlocking { dataStore.data.first() }
+        assertEquals("OFF", prefs[PreferenceKeys.CHARGING_INTENSITY])
+        assertNull(readBack().chargingIntensity)
+    }
+
+    @Test
+    fun `a profile from before the charging boost reads as no boost and keeps its other tiers`() {
+        // A store written by an older version has no charging_intensity key at all.
+        seedRawPrefs {
+            it[PreferenceKeys.INTENSITY] = IntensityLevel.LOW.name
+            it[PreferenceKeys.MOBILE_INTENSITY] = IntensityLevel.LOW.name
+        }
+
+        val read = readBack()
+        assertNull("no stored boost must mean no boost", read.chargingIntensity)
+        assertEquals(IntensityLevel.LOW, read.intensity)
+        assertEquals(IntensityLevel.LOW, read.mobileIntensity)
+    }
+
+    @Test
+    fun `corrupt charging_intensity value fails safe to no boost`() {
+        seedRawPrefs { it[PreferenceKeys.CHARGING_INTENSITY] = "TURBO" }
+
+        assertNull(readBack().chargingIntensity)
     }
 
     @Test

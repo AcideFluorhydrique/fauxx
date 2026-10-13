@@ -40,6 +40,8 @@ data class SettingsUiState(
     val intensity: IntensityLevel = IntensityLevel.MEDIUM,
     /** Action rate on mobile data; null = paused on mobile (issue #62). */
     val mobileIntensity: IntensityLevel? = null,
+    /** Wi-Fi rate while charging; null = Off, the Wi-Fi intensity applies (issue #316). */
+    val chargingIntensity: IntensityLevel? = null,
     val batteryThresholdBattery: Int = 20,
     val batteryThresholdCharging: Int = 20,
     /** Pause while Battery Saver is on (issue #313). */
@@ -154,6 +156,8 @@ class SettingsViewModel @Inject constructor(
     fun setIntensity(level: IntensityLevel) { update { it.copy(intensity = level) } }
     /** Null pauses on mobile data — the legacy "Wi-Fi only" behavior (issue #62). */
     fun setMobileIntensity(level: IntensityLevel?) { update { it.copy(mobileIntensity = level) } }
+    /** Null turns the charging boost off (issue #316). */
+    fun setChargingIntensity(level: IntensityLevel?) { update { it.copy(chargingIntensity = level) } }
     fun setBatteryThreshold(v: Int, t: BatteryThresholdType) = update {
         when (t) {
             BatteryThresholdType.BATTERY -> it.copy(batteryThresholdBattery = v)
@@ -354,6 +358,7 @@ class SettingsViewModel @Inject constructor(
                 current.copy(
                     intensity = new.intensity,
                     mobileIntensity = new.mobileIntensity,
+                    chargingIntensity = new.chargingIntensity,
                     batteryThresholdBattery = new.batteryThresholdBattery,
                     batteryThresholdCharging = new.batteryThresholdCharging,
                     pauseOnBatterySaver = new.pauseOnBatterySaver,
@@ -393,6 +398,7 @@ class SettingsViewModel @Inject constructor(
         return SettingsUiState(
             intensity = p.intensity,
             mobileIntensity = p.mobileIntensity,
+            chargingIntensity = p.chargingIntensity,
             batteryThresholdBattery = p.batteryThresholdBattery,
             batteryThresholdCharging = p.batteryThresholdCharging,
             pauseOnBatterySaver = p.pauseOnBatterySaver,

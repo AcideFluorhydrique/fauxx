@@ -272,6 +272,30 @@ class SettingsViewModelTest {
         assertTrue(transform.captured(PoisonProfile()).pauseOnBatterySaver)
     }
 
+    // --- #316 charging boost ---
+
+    @Test
+    fun `the charging intensity reaches the saved profile and Off clears it`() = runTest {
+        val vm = viewModel()
+        val transform = io.mockk.slot<(PoisonProfile) -> PoisonProfile>()
+        io.mockk.coEvery { profileRepo.updateProfile(capture(transform)) } returns Unit
+        vm.setChargingIntensity(com.fauxx.data.model.IntensityLevel.HIGH)
+        advanceUntilIdle()
+        assertEquals(com.fauxx.data.model.IntensityLevel.HIGH, vm.uiState.value.chargingIntensity)
+        assertEquals(
+            com.fauxx.data.model.IntensityLevel.HIGH,
+            transform.captured(PoisonProfile()).chargingIntensity,
+        )
+
+        vm.setChargingIntensity(null)
+        advanceUntilIdle()
+        assertEquals(null, vm.uiState.value.chargingIntensity)
+        assertEquals(
+            null,
+            transform.captured(PoisonProfile(chargingIntensity = com.fauxx.data.model.IntensityLevel.HIGH)).chargingIntensity,
+        )
+    }
+
     // --- #281 search-engine opt-out ---
 
     @Test

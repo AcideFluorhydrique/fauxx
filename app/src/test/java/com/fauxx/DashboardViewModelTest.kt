@@ -72,6 +72,7 @@ class DashboardViewModelTest {
     private val poisonEngine: PoisonEngine = mockk(relaxed = true) {
         every { healthWarnings } returns MutableStateFlow(emptyList())
         every { engineState } returns MutableStateFlow(EngineState.STOPPED)
+        every { rateConditions } returns MutableStateFlow(com.fauxx.engine.RateConditions())
     }
     private val targetingEngine: TargetingEngine = mockk(relaxed = true) {
         every { getWeights() } returns MutableStateFlow(emptyMap<CategoryPool, Float>())

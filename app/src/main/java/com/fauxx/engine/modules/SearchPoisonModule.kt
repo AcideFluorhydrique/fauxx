@@ -315,11 +315,13 @@ class SearchPoisonModule @Inject constructor(
         // Session plan, scaled down at aggressive tiers so a long session can't starve
         // the displayed actions/hour (issue #76). The module can't see which transport
         // the engine is currently pacing on, so it sizes against the HIGHEST configured
-        // tier (Wi-Fi or mobile) — the conservative direction for rate honesty.
+        // tier (Wi-Fi, mobile or the charging boost, #316): the conservative direction for
+        // rate honesty.
         val profile = profileRepo.getProfile()
         val configuredCeiling = maxOf(
             profile.intensity.actionsPerHour,
-            profile.mobileIntensity?.actionsPerHour ?: 0
+            profile.mobileIntensity?.actionsPerHour ?: 0,
+            profile.chargingIntensity?.actionsPerHour ?: 0
         )
         val (maxRefinements, maxLinks) = sessionBounds(configuredCeiling)
         val refinements = if (maxRefinements > 0) {

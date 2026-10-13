@@ -315,6 +315,10 @@
     <string name="settings_mobile_intensity_title">Intensité en données mobiles</string>
     <string name="settings_intensity_off">Désactivé</string>
     <string name="settings_mobile_intensity_off_description">En pause en données mobiles</string>
+    <string name="settings_charging_intensity_title">Intensité en Wi-Fi pendant la charge</string>
+    <string name="settings_charging_intensity_off_description">Désactivé : l\'intensité en Wi-Fi s\'applique aussi pendant la charge</string>
+    <string name="settings_charging_intensity_description">Utilisée quand le téléphone est branché sur un Wi-Fi non limité. Les données mobiles et les Wi-Fi limités gardent leur propre réglage, et les heures actives, l\'économiseur de batterie et les seuils de batterie s\'appliquent toujours.</string>
+    <string name="settings_charging_intensity_not_higher">Pas plus élevée que votre intensité en Wi-Fi : la charge ne change rien.</string>
     <string name="settings_resume_on_boot_title">Reprendre après redémarrage</string>
     <string name="settings_resume_on_boot_description">Après un redémarrage, afficher une notification pour reprendre la protection. Android empêche les applications de démarrer silencieusement en arrière-plan, donc un appui est requis.</string>
     <string name="settings_load_images_title">Charger les images des pages synthétiques</string>
@@ -484,6 +488,7 @@
     <string name="dashboard_warning_battery_optimized">L\'optimisation de la batterie d\'Android limite Fauxx. Quand l\'écran est éteint, Android peut beaucoup espacer son activité. Autorise l\'utilisation sans restriction en arrière-plan pour que le moteur garde son rythme.</string>
     <string name="dashboard_warning_action_allow">Autoriser</string>
     <string name="dashboard_engine_state_active">Génération d\'une activité synthétique</string>
+    <string name="dashboard_charging_boost">Renfort en charge : %1$s</string>
     <string name="dashboard_engine_state_paused_wifi">En pause — en attente d\'un réseau utilisable</string>
     <!-- PENDING NATIVE-SPEAKER REVIEW -->
     <string name="dashboard_engine_state_paused_metered_wifi">En pause — ce réseau Wi-Fi est facturé à l\'usage</string>

@@ -61,6 +61,7 @@ class SearchPoisonModuleTest {
     private val profileRepo: PoisonProfileRepository = mockk(relaxed = true) {
         every { getProfile().intensity } returns com.fauxx.data.model.IntensityLevel.MEDIUM
         every { getProfile().mobileIntensity } returns null
+        every { getProfile().chargingIntensity } returns null
     }
     // #268: modules now consult lastLoadFailure() to decide success. A relaxed mock would hand back
     // a non-null failure, i.e. "this load failed", so the clean-load default has to be explicit.
@@ -219,6 +220,7 @@ class SearchPoisonModuleTest {
         query: String,
         intensity: com.fauxx.data.model.IntensityLevel = com.fauxx.data.model.IntensityLevel.MEDIUM,
         mobileIntensity: com.fauxx.data.model.IntensityLevel? = null,
+        chargingIntensity: com.fauxx.data.model.IntensityLevel? = null,
     ) {
         bankReturns(query)
         every { queryBlocklist.isBlocked(any()) } returns false
@@ -226,6 +228,7 @@ class SearchPoisonModuleTest {
         every { localeManager.currentLocale } returns SupportedLocale.EN
         every { profileRepo.getProfile().intensity } returns intensity
         every { profileRepo.getProfile().mobileIntensity } returns mobileIntensity
+        every { profileRepo.getProfile().chargingIntensity } returns chargingIntensity
         coEvery { webViewPool.acquire() } returns webView
     }
 
@@ -408,6 +411,22 @@ class SearchPoisonModuleTest {
             "best mechanical keyboards 2026",
             intensity = com.fauxx.data.model.IntensityLevel.LOW,
             mobileIntensity = com.fauxx.data.model.IntensityLevel.EXTREME
+        )
+        val (urls, _) = captureLoads()
+
+        newModule().onAction(CategoryPool.GAMING)
+
+        assertEquals(1, urls.size)
+    }
+
+    // #316: the charging boost is a configured tier too. LOW Wi-Fi + EXTREME while charging
+    // must size the session for EXTREME, the same as an EXTREME mobile tier.
+    @Test
+    fun `charging boost participates in the session-size ceiling`() = runTest(testDispatcher) {
+        safeSession(
+            "best mechanical keyboards 2026",
+            intensity = com.fauxx.data.model.IntensityLevel.LOW,
+            chargingIntensity = com.fauxx.data.model.IntensityLevel.EXTREME
         )
         val (urls, _) = captureLoads()
 

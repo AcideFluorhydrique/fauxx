@@ -61,6 +61,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.fauxx.R
+import com.fauxx.data.model.IntensityLevel
 import com.fauxx.data.querybank.CategoryPool
 import com.fauxx.engine.EngineState
 import com.fauxx.engine.webview.WebViewUpdateHint
@@ -324,7 +325,8 @@ fun DashboardScreen(
             // The one-tap escape hatch only helps when the pause is caused by mobile
             // being Off; with a tier already set, PAUSED_WIFI means "no network at all"
             // and the button could only downgrade the user's chosen tier (issue #62).
-            showUseMobileData = uiState.mobileIntensity == null
+            showUseMobileData = uiState.mobileIntensity == null,
+            chargingBoost = uiState.chargingBoost
         )
 
         // Action counters
@@ -379,7 +381,8 @@ private fun ProtectionCard(
     pendingResume: PendingResume?,
     onToggle: (Boolean) -> Unit,
     onUseMobileData: () -> Unit,
-    showUseMobileData: Boolean
+    showUseMobileData: Boolean,
+    chargingBoost: IntensityLevel? = null
 ) {
     // Once the engine resigns (quiet hours, a long pause) it is destroyed and reads STOPPED, so
     // the recorded pending resume stands in for the pause it resigned in (#346).
@@ -436,6 +439,20 @@ private fun ProtectionCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // Why the pace changed (issue #316). Only while running at a rate: during any
+                    // pause the boost does nothing, and the line above names the pause.
+                    if (enabled && chargingBoost != null &&
+                        (engineState == EngineState.ACTIVE || engineState == EngineState.PAUSED_RATE_LIMIT)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.dashboard_charging_boost,
+                                stringResource(chargingBoost.displayNameRes())
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Switch(checked = enabled, onCheckedChange = onToggle)
             }
