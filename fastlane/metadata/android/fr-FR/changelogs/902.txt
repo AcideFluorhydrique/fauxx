@@ -1,0 +1,7 @@
+• Nouveau : « Intensité en Wi-Fi pendant la charge » dans les Paramètres augmente le rythme en Wi-Fi quand le téléphone est branché. Les données mobiles, le Wi-Fi limité, les heures actives et l'économiseur de batterie restent prioritaires (#316).
+• Nouveau : « Vos recherches et sites » dans les Paramètres permet d'ajouter vos propres recherches et sites, comme l'actualité locale dans votre langue, pour que le bruit semble venir de là où vous vivez. Les noms des personas suivent désormais la langue du bruit (#328).
+• Corrigé : beaucoup de visites étaient notées en échec quand la vérification anti-robots d'un site était passée ou que la page tentait d'ouvrir une appli. Les pages et moteurs de recherche qui échouent sans cesse ou affichent un CAPTCHA sont désormais mis au repos au lieu d'être réessayés (#353).
+• Corrigé : les listes de sites intégrées ont été rafraîchies, sans les pages mortes ni les domaines qui mènent désormais ailleurs (#353).
+• Corrigé : la nuit, le tableau de bord affichait « ACTIF » avec « Moteur arrêté ». Il indique maintenant quand Fauxx reprendra (#346).
+• Corrigé : sur les petits écrans, les libellés des onglets passaient à la ligne, les boutons de la première configuration sortaient de l'écran et les icônes de l'en-tête masquaient le contenu (#347, #348).
+• Nouvelle question de la FAQ : pourquoi l'activité de Fauxx n'apparaît pas dans votre compte Google.

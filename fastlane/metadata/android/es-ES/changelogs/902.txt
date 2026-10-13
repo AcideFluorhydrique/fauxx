@@ -1,0 +1,7 @@
+• Nuevo: «Intensidad con Wi-Fi mientras carga» en Ajustes sube el ritmo con Wi-Fi mientras el teléfono está enchufado. Nunca pasa por encima de los datos móviles, el Wi-Fi medido, las horas activas ni el Ahorro de batería (#316).
+• Nuevo: «Tus búsquedas y sitios» en Ajustes te permite añadir tus propios términos de búsqueda y sitios web, como noticias locales en tu idioma, para que el ruido parezca venir de donde vives. Los nombres de las personas ahora coinciden con el idioma del ruido (#328).
+• Corregido: muchas visitas se registraban como fallidas cuando la verificación antibots de un sitio se superaba o la página intentaba abrir una app. Las páginas y los buscadores que fallan una y otra vez o muestran un CAPTCHA ahora descansan en lugar de reintentarse (#353).
+• Corregido: se han renovado las listas de sitios integradas, quitando páginas muertas y dominios que ahora llevan a otro sitio (#353).
+• Corregido: por la noche, Inicio mostraba «ACTIVO» con «Motor detenido». Ahora indica cuándo volverá Fauxx (#346).
+• Corregido: en pantallas pequeñas, las etiquetas de las pestañas se partían, los botones de la configuración inicial quedaban fuera de alcance y los iconos de la cabecera tapaban el contenido (#347, #348).
+• Nueva pregunta frecuente: por qué la actividad de Fauxx no aparece en tu cuenta de Google.
