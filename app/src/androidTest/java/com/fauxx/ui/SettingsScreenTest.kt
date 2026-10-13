@@ -86,9 +86,23 @@ class SettingsScreenTest {
             }
         }
         composeRule.onNodeWithText("Mobile data intensity").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Off").performScrollTo().assertIsDisplayed()
+        // The first "Off" is the mobile tier's; the charging card below it (#316) has one too.
+        composeRule.onAllNodesWithText("Off")[0].performScrollTo().assertIsDisplayed()
         // Fresh profile defaults to Off, whose caption explains the pause behavior.
         composeRule.onNodeWithText("Paused on mobile data").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun chargingIntensitySection_isDisplayed() {
+        // Issue #316: an optional Wi-Fi tier while charging, Off by default.
+        composeRule.setContent {
+            FauxxTheme {
+                SettingsScreen()
+            }
+        }
+        composeRule.onNodeWithText("Wi-Fi intensity while charging").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Off: the Wi-Fi intensity applies while charging too")
+            .performScrollTo().assertIsDisplayed()
     }
 
     @Test
