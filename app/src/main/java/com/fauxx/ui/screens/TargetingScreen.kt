@@ -41,12 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -58,10 +61,14 @@ import com.fauxx.targeting.layer1.InterestMapping
 import com.fauxx.targeting.layer1.MappingConfidence
 import com.fauxx.targeting.layer2.importers.ImportResult
 import com.fauxx.targeting.layer2.importers.ImportSource
+import com.fauxx.targeting.layer2.importers.PastedCategory
 import com.fauxx.ui.format.displayNameRes
 import com.fauxx.ui.viewmodels.TargetingUiState
 import com.fauxx.ui.viewmodels.TargetingViewModel
 import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Targeting screen: visualizes the Demographic Distancing Engine state.
@@ -74,6 +81,7 @@ fun TargetingScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showClearDialog by remember { mutableStateOf(false) }
+    var showMyAdCenterDialog by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -137,6 +145,7 @@ fun TargetingScreen(
                 uiState = uiState,
                 onImportGoogle = { viewModel.importGoogleTakeout(it) },
                 onImportFacebook = { viewModel.importFacebookDyi(it) },
+                onEnterMyAdCenter = { showMyAdCenterDialog = true },
                 onDismissResult = { viewModel.dismissImportResult() }
             )
 
@@ -214,6 +223,17 @@ fun TargetingScreen(
         ) {
             Text(stringResource(R.string.targeting_clear_profile_button))
         }
+    }
+
+    if (showMyAdCenterDialog) {
+        MyAdCenterEntryDialog(
+            onPreview = { viewModel.previewMyAdCenter(it) },
+            onSave = {
+                viewModel.importMyAdCenter(it)
+                showMyAdCenterDialog = false
+            },
+            onDismiss = { showMyAdCenterDialog = false }
+        )
     }
 
     if (showClearDialog) {
@@ -548,6 +568,7 @@ private fun ImportButtonsCard(
     uiState: TargetingUiState,
     onImportGoogle: (android.net.Uri) -> Unit,
     onImportFacebook: (android.net.Uri) -> Unit,
+    onEnterMyAdCenter: () -> Unit,
     onDismissResult: () -> Unit
 ) {
     val mimeFilter = remember { arrayOf("application/zip", "application/json", "*/*") }
@@ -577,6 +598,7 @@ private fun ImportButtonsCard(
 
             val googleBusy = uiState.importInProgress == ImportSource.GOOGLE_TAKEOUT
             val facebookBusy = uiState.importInProgress == ImportSource.FACEBOOK_DYI
+            val myAdCenterBusy = uiState.importInProgress == ImportSource.GOOGLE_MY_AD_CENTER
             val anyBusy = uiState.importInProgress != null
 
             OutlinedButton(
@@ -587,6 +609,18 @@ private fun ImportButtonsCard(
                 Text(stringResource(
                     if (googleBusy) R.string.targeting_import_google_button_busy
                     else R.string.targeting_import_google_button
+                ))
+            }
+            Spacer(Modifier.height(8.dp))
+            // #374: Google documents no export of its inferred categories; My Ad Center shows them.
+            OutlinedButton(
+                onClick = onEnterMyAdCenter,
+                enabled = !anyBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(
+                    if (myAdCenterBusy) R.string.targeting_import_my_ad_center_button_busy
+                    else R.string.targeting_import_my_ad_center_button
                 ))
             }
             Spacer(Modifier.height(8.dp))
@@ -607,6 +641,92 @@ private fun ImportButtonsCard(
             }
         }
     }
+}
+
+private const val MY_AD_CENTER_URL = "https://myadcenter.google.com/"
+private const val PREVIEW_DEBOUNCE_MS = 250L
+private const val MAX_UNMATCHED_SHOWN = 10
+
+/**
+ * Entry for the categories My Ad Center lists under "Categories used to show you ads" (#374).
+ * The user pastes or types them; a live preview shows which Fauxx category each line maps to and
+ * which lines are ignored, so a stray heading or a bad match is visible before saving.
+ */
+@Composable
+private fun MyAdCenterEntryDialog(
+    onPreview: (String) -> List<PastedCategory>,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by rememberSaveable { mutableStateOf("") }
+    // Off the main thread: the first mapping loads the category table from assets.
+    val preview by produceState(initialValue = emptyList<PastedCategory>(), text) {
+        delay(PREVIEW_DEBOUNCE_MS)
+        value = withContext(Dispatchers.Default) { onPreview(text) }
+    }
+    val matched = preview.mapNotNull { it.category }.distinct()
+    val unmatched = preview.filter { it.category == null }.map { it.text }
+    val uriHandler = LocalUriHandler.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.targeting_my_ad_center_title)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = stringResource(R.string.targeting_my_ad_center_steps),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(onClick = { uriHandler.openUri(MY_AD_CENTER_URL) }) {
+                    Text(stringResource(R.string.targeting_my_ad_center_open))
+                }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.targeting_my_ad_center_field_label)) },
+                    minLines = 4,
+                    maxLines = 8,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (matched.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.targeting_my_ad_center_matched,
+                            matched.size,
+                            matched.map { stringResource(it.displayNameRes()) }.joinToString(", ")
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (unmatched.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    val shown = unmatched.take(MAX_UNMATCHED_SHOWN).joinToString(", ") +
+                        if (unmatched.size > MAX_UNMATCHED_SHOWN) ", …" else ""
+                    Text(
+                        text = stringResource(R.string.targeting_my_ad_center_unmatched, shown),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.targeting_my_ad_center_replaces),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text) }, enabled = matched.isNotEmpty()) {
+                Text(stringResource(R.string.targeting_my_ad_center_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        }
+    )
 }
 
 /**

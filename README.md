@@ -42,12 +42,12 @@ You optionally tell Fauxx coarse demographics (age range, interests, profession,
 
 ### Layer 2: Ad-Profile Import (Opt-in, Advanced)
 
-Fauxx imports the ad-interest profile the platforms have already built about you, from a data export you provide: your advertising data from Google Takeout, or Facebook's "Download Your Information" (JSON). It reads exactly what the ad networks think they know about you, then aggressively suppresses those confirmed categories so the decoy activity concentrates on believable off-profile interests instead.
+Fauxx imports the ad-interest profile the platforms have already built about you, from data you provide: the categories Google lists in My Ad Center (pasted or typed into Fauxx), your advertising data from Google Takeout, or Facebook's "Download Your Information" (JSON). It reads exactly what the ad networks think they know about you, then aggressively suppresses those confirmed categories so the decoy activity concentrates on believable off-profile interests instead.
 
-- You provide an exported file. Fauxx never logs in, reads cookies, or touches the platforms.
-- Reads the file only. Nothing is sent anywhere.
+- You provide the data. Fauxx never logs in, reads cookies, or touches the platforms.
+- Reads only what you give it. Nothing is sent anywhere.
 - Re-import occasionally as your profile drifts (Fauxx reminds you after about 90 days).
-- On a missing or unrecognized file, nothing is imported and the other layers carry on unchanged.
+- On a missing or unrecognized file, or pasted text that matches no category, nothing is imported and the other layers carry on unchanged.
 
 ### Layer 3: Synthetic Persona Rotation (On by Default)
 
@@ -374,16 +374,19 @@ Things to know:
 
 ### How does Layer 2 (Ad-Profile Import) work, and what do I import?
 
-Layer 2 reads the ad-interest profile the platforms have already built about you, from a data export you download yourself, and tells the engine to *suppress* those categories so the synthetic activity steers away from your real profile.
+Layer 2 reads the ad-interest profile the platforms have already built about you, from data you give it, and tells the engine to *suppress* those categories so the synthetic activity steers away from your real profile.
 
 To use it:
 
-- **Export your ad data.** From Google, use [Google Takeout](https://takeout.google.com) and select your advertising data (you can deselect everything else to keep the file small). From Facebook, use **Download Your Information** (accountscenter.facebook.com), choose **JSON** format, and include **"Ads and businesses"**. The platform emails you an archive (a ZIP or JSON file).
+- **Google, from My Ad Center (most complete).** Google does not document any export of the ad categories it has inferred about you, but [My Ad Center](https://myadcenter.google.com) shows them under **Manage privacy → "Categories used to show you ads"**. On Fauxx's Targeting screen, tap **Enter categories from My Ad Center**, then paste or type the list, one category per line. Fauxx shows which of its categories each line matches and which lines it ignores before you save. Fauxx recognises English category names best.
+- **Or export your ad data.** From Google, use [Google Takeout](https://takeout.google.com) and select your advertising data (you can deselect everything else to keep the file small). From Facebook, use **Download Your Information** (accountscenter.facebook.com), choose **JSON** format, and include **"Ads and businesses"**. The platform emails you an archive (a ZIP or JSON file).
 - **Import the file.** On Fauxx's Targeting screen, tap the Google Takeout or Facebook import button and pick the file you downloaded. Fauxx reads the ad-interest categories and applies the away-from weighting.
-- **Nothing leaves your device.** Fauxx never logs in, reads cookies, or contacts the platforms. It only parses the file you give it, on-device.
+- **Nothing leaves your device.** Fauxx never logs in, reads cookies, or contacts the platforms. It only parses the file or text you give it, on-device.
 - **Re-import occasionally.** Your ad profile drifts over time, so Fauxx reminds you to re-import after about 90 days. There is no background scraping.
 
-If the import says it couldn't find an ad-interest file, the most common cause is that personalized ads are turned **off** in your Google or Facebook settings, so the platform keeps no ad profile to export. Turn personalized ads on, let a profile accrue, then export again.
+If the import says it couldn't find ad categories, there are two common causes. Google's Takeout may not include the inferred categories at all, in which case use **Enter categories from My Ad Center** instead. Or personalized ads are turned **off** in your Google or Facebook settings, so the platform keeps no ad profile; turn personalized ads on, let a profile build up, then try again.
+
+A Google Takeout import and the My Ad Center entry are both stored as your Google profile, so saving one replaces the other.
 
 ### Why doesn't Fauxx's activity show up in my Google account or My Ad Center?
 
