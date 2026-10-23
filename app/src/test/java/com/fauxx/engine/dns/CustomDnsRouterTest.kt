@@ -83,7 +83,13 @@ class CustomDnsRouterTest {
     /** How many of the next proxies fail to start. */
     private val failStarts = java.util.concurrent.atomic.AtomicInteger(0)
 
-    private fun servingProxies() = made.toList().count { (p, _) -> isServing(p.port) }
+    /**
+     * Proxies not yet stopped. Asked of each proxy, not its port: a stopped proxy's port can be
+     * handed to a newer one (or any listener in the test JVM), which would then count twice.
+     */
+    private fun servingProxies() = made.toList().count { (p, _) -> !p.isStopped }
+
+    private fun proxyOn(port: Int) = made.toList().last { (p, _) -> p.port == port }.first
     private val router = CustomDnsRouter(
         repo, FakeClock(0L), override, DnsInterceptionProbe { intercepted },
         object : NetworkChanges { override val changes = networkChanged },
@@ -412,11 +418,11 @@ class CustomDnsRouterTest {
 
     // --- A strict proxy that dies, and how many proxies are kept (second review) ---
 
-    /** Start strict DoH, then make its proxy die. Returns the dead proxy's port. */
-    private suspend fun strictProxyDies(): Int {
+    /** Start strict DoH, then make its proxy die. Returns the dead proxy. */
+    private suspend fun strictProxyDies(): com.fauxx.network.dns.LoopbackProxy {
         profile.value = doh().copy(dnsStrict = true)
         router.start()
-        val port = override.port!!
+        val proxy = proxyOn(override.port!!)
         // Wait for the settings collector to apply its first value: with the proxy gone, a later
         // first emission would (rightly) route again at once, hiding the state under test.
         withTimeout(5_000) { while (router.settingsApplied.value < 1) delay(20) }
@@ -426,13 +432,15 @@ class CustomDnsRouterTest {
         withTimeout(5_000) {
             while (router.browsingBlockedReason() == null || router.health.value !is DnsHealth.Degraded) delay(20)
         }
-        return port
+        return proxy
     }
 
     @Test
     fun `a strict proxy that dies is stopped so its port refuses, and the override is kept`() = runBlocking {
-        val port = strictProxyDies()
-        assertTrue("connections are refused, not left hanging in a backlog", !isServing(port))
+        val proxy = strictProxyDies()
+        // Checked on the proxy itself: once its port is free, any other listener in the test JVM
+        // can be handed the same number, so probing the port could see a stranger answer.
+        assertTrue("stopped, so connections are refused, not left hanging in a backlog", proxy.isStopped)
         assertTrue("strict mode keeps the WebView on the dead port", "clear" !in override.calls)
         val health = router.health.value
         assertTrue(health is DnsHealth.Degraded && health.blocked && health.cause == DegradeCause.ROUTING)

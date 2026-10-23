@@ -119,6 +119,10 @@ class LoopbackProxy(
         executor.shutdownNow()
     }
 
+    /** Whether [stop] has run; for tests, which cannot tell by probing a port that may be reused. */
+    @VisibleForTesting
+    internal val isStopped: Boolean get() = stopped
+
     /** After [stop], wait until every worker has finished: tests check what escaped only then. */
     @VisibleForTesting
     internal fun awaitWorkersStopped(timeoutMs: Long): Boolean =
