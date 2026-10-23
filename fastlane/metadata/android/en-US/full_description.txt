@@ -1,33 +1,34 @@
-Fauxx is an open-source privacy tool that protects you by generating diverse, believable synthetic browsing activity in the background. By feeding data brokers and ad-tech platforms plausible off-demographic decoy activity that reads as real people, Fauxx makes your genuine behavioral signal indistinguishable from convincing fakes — deception, not easily-filterable noise.
+Fauxx runs believable fake browsing in the background, so the companies that profile you can't tell your real interests from the decoys. The decoy activity looks like real people with different interests from yours, not random noise that is easy to filter out.
 
 HOW IT WORKS
 
-Fauxx runs quietly in the background and performs diverse browsing activities across many topic categories — searches, page visits, DNS lookups, a stable per-persona device identity, and ad profile pollution. The goal is to bury your real interests under a stream of coherent, believable decoy activity so that data brokers can't tell which "you" is real.
+Fauxx quietly searches, visits pages and makes DNS lookups across many topics, as a made-up person with a stable device identity. Your real interests get buried under a steady stream of coherent decoy activity, so data brokers and ad networks can't tell which "you" is real.
 
 FEATURES
 
-• Diverse search queries across Google, Bing, DuckDuckGo, Yahoo, and Yandex on topics far from your real interests, with per-engine opt-out
-• Varied website visits across dozens of content categories
-• Ad profile pollution — loads ad-heavy pages to inject off-demographic ad signals
-• Stable per-persona device identity: a coherent Chrome User-Agent and matching client hints per synthetic persona, not random rotation
-• Optional encrypted DNS (DNS-over-HTTPS) for Fauxx's own traffic, so a Pi-hole or VPN that blocks tracker domains does not stop it
-• DNS query diversification
-• Smart targeting engine with 3 layers of demographic distancing
-• Synthetic persona rotation — adopts a new fake identity every week
-• Poisson-distributed timing that mimics natural human browsing patterns
-• Full audit log with CSV/JSON export
-• On-device encryption for all personal data (SQLCipher + Android Keystore)
+• Searches on Google, Bing, DuckDuckGo, Yahoo and Yandex about topics far from your real interests; switch off any engine you want to spare
+• Visits to a wide range of websites across dozens of topics
+• Ad profile pollution: loads ad-heavy pages so ad networks see interests that aren't yours (it never clicks ads)
+• Synthetic personas: a fake person with their own interests and one believable phone, replaced by a new persona every 30 to 90 days
+• Separate cookies and site storage for each persona, on recent versions of Android System WebView
+• Decoys steer away from you: optionally tell Fauxx about yourself, or import your advertising data from Google Takeout or Facebook
+• Add your own searches and sites, such as local news in your language
+• Optional custom DNS (encrypted DNS-over-HTTPS or a plain DNS server) for Fauxx's own traffic, so a Pi-hole or VPN that blocks tracker domains does not stop it
+• DNS lookups for a wide spread of domains
+• Natural timing: random gaps between actions and a daily rhythm, only during the hours you choose
+• Full activity log with CSV, JSON and HTML export
 • No accounts, no cloud storage, no analytics, no telemetry
 
-OPTIONAL DEMOGRAPHIC TARGETING
+OPTIONAL: TELL FAUXX ABOUT YOURSELF
 
-Tell Fauxx about yourself (age, gender, interests, profession, region) and it will generate decoy activity that's maximally different from your real profile. All demographic data stays encrypted on your device. Skip the setup entirely for uniform, unbiased decoys.
+Tell Fauxx your age range, gender, interests, profession and region, and its decoys will steer away from them. You can skip every question; the decoys then follow the synthetic personas alone.
 
 PRIVACY FIRST
 
-• All data stays on your device
-• No analytics, no crash reporting, no advertising identifiers
-• Fully open-source — inspect the code yourself
-• Clear All Data option to wipe everything instantly
+• Everything stays on your device
+• Your profile, imported ad data and activity log are kept in an encrypted database (SQLCipher, with the key protected by the Android Keystore). App settings are stored unencrypted in the app's private storage.
+• No analytics, no advertising identifiers, and no automatic crash reports: after a crash, Fauxx asks before you share a report
+• Fully open source, so you can inspect the code
+• Clear All Data wipes everything at once
 
-Fauxx is free, open-source, and contains no ads.
+Fauxx is free, open source and contains no ads.
