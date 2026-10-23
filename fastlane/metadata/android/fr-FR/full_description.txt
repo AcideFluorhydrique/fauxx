@@ -1,33 +1,34 @@
-Fauxx est un outil de confidentialité open source qui vous protège en générant en arrière-plan une activité de navigation synthétique et variée. En alimentant les courtiers en données et les plateformes publicitaires en activité leurre plausible, étrangère à votre profil et qui ressemble à de vraies personnes, Fauxx rend votre signal comportemental réel indissociable de fausses données convaincantes : de la tromperie, pas du bruit facile à filtrer.
+Fauxx génère en arrière-plan une fausse navigation crédible, pour que les entreprises qui vous profilent ne puissent pas distinguer vos vrais centres d'intérêt des leurres. L'activité leurre ressemble à celle de vraies personnes aux intérêts différents des vôtres, pas à du bruit aléatoire facile à filtrer.
 
 COMMENT ÇA MARCHE
 
-Fauxx s'exécute discrètement en arrière-plan et effectue des activités de navigation variées dans de nombreuses catégories de sujets : recherches, visites de pages, requêtes DNS, une identité d'appareil stable par persona et pollution du profil publicitaire. L'objectif est d'enfouir vos centres d'intérêt réels sous un flux d'activité leurre cohérente et crédible afin que les courtiers en données ne puissent pas savoir quel « vous » est réel.
+Fauxx fait discrètement des recherches, visite des pages et effectue des requêtes DNS sur de nombreux sujets, comme une personne inventée dotée d'une identité d'appareil stable. Vos vrais centres d'intérêt sont noyés sous un flux régulier d'activité leurre cohérente, si bien que les courtiers en données et les régies publicitaires ne peuvent pas savoir quel « vous » est réel.
 
 FONCTIONNALITÉS
 
-• Requêtes de recherche variées sur Google, Bing, DuckDuckGo et Yahoo sur des sujets éloignés de vos intérêts réels
-• Visites de sites web diversifiées dans des dizaines de catégories de contenu
-• Pollution du profil publicitaire : charge des pages riches en publicités pour injecter des signaux publicitaires étrangers à votre démographie
-• Identité d'appareil stable par persona : un User-Agent Chrome cohérent et des client hints correspondants par persona synthétique, sans rotation aléatoire
-• DNS chiffré facultatif (DNS-over-HTTPS) pour le seul trafic de Fauxx, afin qu'un Pi-hole ou un VPN qui bloque les domaines de suivi ne l'arrête pas
-• Diversification des requêtes DNS
-• Moteur de ciblage intelligent avec 3 couches de distanciation démographique
-• Rotation de personas synthétiques : adopte une nouvelle fausse identité chaque semaine
-• Minutage suivant une distribution de Poisson qui imite les habitudes naturelles de navigation humaine
-• Journal d'audit complet avec export CSV/JSON
-• Chiffrement sur l'appareil pour toutes les données personnelles (SQLCipher + Android Keystore)
+• Recherches sur Google, Bing, DuckDuckGo, Yahoo et Yandex sur des sujets éloignés de vos vrais intérêts ; désactivez le moteur que vous voulez épargner
+• Visites d'une grande variété de sites web sur des dizaines de sujets
+• Pollution du profil publicitaire : charge des pages riches en publicités pour que les régies voient des intérêts qui ne sont pas les vôtres (aucun clic sur les publicités)
+• Personas synthétiques : une fausse personne avec ses propres intérêts et un seul téléphone crédible, remplacée par une nouvelle persona tous les 30 à 90 jours
+• Cookies et stockage de sites séparés pour chaque persona, avec une version récente d'Android System WebView
+• Des leurres éloignés de vous : en option, parlez de vous à Fauxx ou importez vos données publicitaires depuis Google Takeout ou Facebook
+• Ajoutez vos propres recherches et sites, par exemple l'actualité locale dans votre langue
+• DNS personnalisé facultatif (DNS-over-HTTPS chiffré ou serveur DNS classique) pour le seul trafic de Fauxx, afin qu'un Pi-hole ou un VPN qui bloque les domaines de suivi ne l'arrête pas
+• Requêtes DNS vers un large éventail de domaines
+• Rythme naturel : pauses aléatoires entre les actions et rythme quotidien, uniquement aux heures que vous choisissez
+• Journal d'activité complet avec export CSV, JSON et HTML
 • Aucun compte, aucun stockage cloud, aucune analyse, aucune télémétrie
 
-CIBLAGE DÉMOGRAPHIQUE OPTIONNEL
+EN OPTION : PARLEZ DE VOUS À FAUXX
 
-Renseignez Fauxx sur vous (âge, genre, centres d'intérêt, profession, région) et il générera une activité leurre aussi différente que possible de votre profil réel. Toutes les données démographiques restent chiffrées sur votre appareil. Ignorez entièrement la configuration pour des leurres uniformes et sans biais.
+Indiquez à Fauxx votre tranche d'âge, votre genre, vos centres d'intérêt, votre profession et votre région, et ses leurres s'en éloigneront. Vous pouvez ignorer toutes les questions ; les leurres suivent alors uniquement les personas synthétiques.
 
 LA CONFIDENTIALITÉ AVANT TOUT
 
-• Toutes les données restent sur votre appareil
-• Aucune analyse, aucun rapport de plantage, aucun identifiant publicitaire
-• Entièrement open source : inspectez le code vous-même
-• Option Effacer toutes les données pour tout supprimer instantanément
+• Tout reste sur votre appareil
+• Votre profil, les données publicitaires importées et le journal d'activité sont conservés dans une base de données chiffrée (SQLCipher, clé protégée par l'Android Keystore). Les réglages de l'application sont stockés non chiffrés dans l'espace privé de l'application.
+• Aucune analyse, aucun identifiant publicitaire et aucun rapport de plantage automatique : après un plantage, Fauxx vous demande avant que vous ne partagiez un rapport
+• Entièrement open source : vous pouvez inspecter le code
+• Effacer toutes les données supprime tout en une fois
 
 Fauxx est gratuit, open source et sans publicité.

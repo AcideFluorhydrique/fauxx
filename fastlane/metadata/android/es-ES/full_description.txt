@@ -1,33 +1,34 @@
-Fauxx es una herramienta de privacidad de código abierto que te protege generando en segundo plano una actividad de navegación sintética y diversa. Al alimentar a los corredores de datos y las plataformas publicitarias con actividad señuelo plausible y ajena a tu perfil que parece de personas reales, Fauxx hace que tu señal de comportamiento real sea indistinguible de imitaciones convincentes: engaño, no ruido fácil de filtrar.
+Fauxx genera en segundo plano una navegación falsa y creíble, para que las empresas que crean perfiles sobre ti no puedan distinguir tus intereses reales de los señuelos. La actividad señuelo parece la de personas reales con intereses distintos de los tuyos, no ruido aleatorio fácil de filtrar.
 
 CÓMO FUNCIONA
 
-Fauxx se ejecuta discretamente en segundo plano y realiza actividades de navegación diversas en muchas categorías temáticas: búsquedas, visitas a páginas, consultas DNS, una identidad de dispositivo estable por persona y contaminación del perfil publicitario. El objetivo es enterrar tus intereses reales bajo un flujo de actividad señuelo coherente y creíble para que los corredores de datos no puedan saber cuál «tú» es real.
+Fauxx busca, visita páginas y hace consultas DNS sobre muchos temas, de forma discreta, como una persona inventada con una identidad de dispositivo estable. Tus intereses reales quedan enterrados bajo un flujo constante de actividad señuelo coherente, para que los corredores de datos y las redes publicitarias no puedan saber cuál «tú» es real.
 
 CARACTERÍSTICAS
 
-• Consultas de búsqueda diversas en Google, Bing, DuckDuckGo y Yahoo sobre temas alejados de tus intereses reales
-• Visitas variadas a sitios web en docenas de categorías de contenido
-• Contaminación del perfil publicitario: carga páginas con muchos anuncios para inyectar señales publicitarias ajenas a tu demografía
-• Identidad de dispositivo estable por persona: un User-Agent de Chrome coherente y client hints coincidentes por cada persona sintética, sin rotación aleatoria
-• DNS cifrado opcional (DNS-over-HTTPS) solo para el tráfico de Fauxx, para que un Pi-hole o una VPN que bloquee dominios de rastreo no lo detenga
-• Diversificación de consultas DNS
-• Motor de segmentación inteligente con 3 capas de distanciamiento demográfico
-• Rotación de personas sintéticas: adopta una nueva identidad falsa cada semana
-• Tiempos con distribución de Poisson que imitan los patrones naturales de navegación humana
-• Registro de auditoría completo con exportación CSV/JSON
-• Cifrado en el dispositivo para todos los datos personales (SQLCipher + Android Keystore)
+• Búsquedas en Google, Bing, DuckDuckGo, Yahoo y Yandex sobre temas alejados de tus intereses reales; desactiva el buscador que quieras dejar fuera
+• Visitas a una gran variedad de sitios web sobre docenas de temas
+• Contaminación del perfil publicitario: carga páginas con muchos anuncios para que las redes publicitarias vean intereses que no son los tuyos (nunca hace clic en anuncios)
+• Personas sintéticas: una persona falsa con sus propios intereses y un único teléfono creíble, que se sustituye por otra nueva cada 30 a 90 días
+• Cookies y almacenamiento de sitios separados para cada persona, con versiones recientes de Android System WebView
+• Los señuelos se alejan de ti: opcionalmente, cuéntale a Fauxx sobre ti o importa tus datos publicitarios de Google Takeout o Facebook
+• Añade tus propias búsquedas y sitios, como noticias locales en tu idioma
+• DNS personalizado opcional (DNS-over-HTTPS cifrado o un servidor DNS normal) solo para el tráfico de Fauxx, para que un Pi-hole o una VPN que bloquee dominios de rastreo no lo detenga
+• Consultas DNS a una amplia variedad de dominios
+• Ritmo natural: pausas aleatorias entre acciones y un ritmo diario, solo en las horas que elijas
+• Registro completo de actividad con exportación CSV, JSON y HTML
 • Sin cuentas, sin almacenamiento en la nube, sin analíticas, sin telemetría
 
-SEGMENTACIÓN DEMOGRÁFICA OPCIONAL
+OPCIONAL: CUÉNTALE A FAUXX SOBRE TI
 
-Cuéntale a Fauxx sobre ti (edad, género, intereses, profesión, región) y generará actividad señuelo lo más diferente posible de tu perfil real. Todos los datos demográficos permanecen cifrados en tu dispositivo. Omite la configuración por completo para obtener señuelos uniformes y sin sesgo.
+Indica a Fauxx tu rango de edad, género, intereses, profesión y región, y sus señuelos se alejarán de ellos. Puedes omitir todas las preguntas; los señuelos seguirán entonces solo a las personas sintéticas.
 
 LA PRIVACIDAD ANTE TODO
 
-• Todos los datos permanecen en tu dispositivo
-• Sin analíticas, sin informes de fallos, sin identificadores publicitarios
-• Totalmente de código abierto: inspecciona el código tú mismo
-• Opción de borrar todos los datos para eliminar todo al instante
+• Todo permanece en tu dispositivo
+• Tu perfil, los datos publicitarios importados y el registro de actividad se guardan en una base de datos cifrada (SQLCipher, con la clave protegida por el Android Keystore). Los ajustes de la app se guardan sin cifrar en el almacenamiento privado de la app.
+• Sin analíticas, sin identificadores publicitarios y sin informes de fallos automáticos: tras un fallo, Fauxx te pregunta antes de que compartas un informe
+• Totalmente de código abierto: puedes inspeccionar el código
+• Borrar todos los datos elimina todo de una vez
 
 Fauxx es gratuito, de código abierto y no contiene anuncios.

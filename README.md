@@ -13,9 +13,9 @@ Fauxx is an open-source Android privacy tool that poisons data broker and ad-tec
 
 > 💬 **Questions about how Fauxx works, or wishlist ideas?** Use [Discussions](https://github.com/digital-grease/fauxx/discussions). Bug reports and feature requests stay in [Issues](https://github.com/digital-grease/fauxx/issues).
 
-> 💬 **Looking for the AI usage disclosure?** See [AIUSE.md](https://github.com/digital-grease/fauxx/blob/main/AIUSE.md)
+> 🤖 **AI usage disclosure:** see [AIUSE.md](https://github.com/digital-grease/fauxx/blob/main/AIUSE.md).
 
-> 📦 **Where to get it:** Fauxx ships via **F-Droid**, **GitHub Releases**, and sideload / Obtainium. **Fauxx is not distributed on Google Play and will not return there.** Play is too restrictive for Fauxx's full feature set (it disallows the location-spoofing and ad-profile-pollution modules), and it is moving toward requiring the age-verification API, which a no-account privacy tool has no business integrating. The former `play` build flavor has been removed from the source.
+> 📦 **Where to get it:** **F-Droid**, **GitHub Releases**, or Obtainium pointed at the GitHub releases. Fauxx is not on Google Play and will not return there (see [Why not Google Play?](#why-not-google-play)).
 
 > 🖥️ **Desktop companion (alpha):** [fauxx-desktop](https://github.com/digital-grease/fauxx-desktop) is a new, early-alpha cross-device privacy command center (a Rust headless core with an Iced GUI). It runs decoy generation on a desktop or homelab box and shares an encrypted, local-only LAN persona-sync protocol with the Android app, so paired devices can keep one coherent persona. It is alpha software, so expect rough edges while it stabilizes.
 
@@ -42,7 +42,7 @@ You optionally tell Fauxx coarse demographics (age range, interests, profession,
 
 ### Layer 2: Ad-Profile Import (Opt-in, Advanced)
 
-Fauxx imports the ad-interest profile the platforms have already built about you, from a data export you provide: Google Takeout ("My Ad Center") or Facebook's "Download Your Information" (JSON). It reads exactly what the ad networks think they know about you, then aggressively suppresses those confirmed categories so the decoy activity concentrates on believable off-profile interests instead.
+Fauxx imports the ad-interest profile the platforms have already built about you, from a data export you provide: your advertising data from Google Takeout, or Facebook's "Download Your Information" (JSON). It reads exactly what the ad networks think they know about you, then aggressively suppresses those confirmed categories so the decoy activity concentrates on believable off-profile interests instead.
 
 - You provide an exported file. Fauxx never logs in, reads cookies, or touches the platforms.
 - Reads the file only. Nothing is sent anywhere.
@@ -57,7 +57,7 @@ Layer 3 runs on its own, whether or not Layers 1 and 2 are enabled. To avoid a p
 
 All layers produce a weight map across content categories. These weights multiply together and normalize, so the final distribution sums to 1.0. Categories are clamped with a minimum weight of 0.001, because absence is still a signal.
 
-Example: If you report yourself as a 25-year-old software engineer, Layer 1 drops RETIREMENT and PARENTING to 0.15× (away-from) and boosts GAMING and TECHNOLOGY to 2.5× (toward other interests). When Layer 2 imports your ad profile and sees Google has tagged you with TECH, it further suppresses TECH (0.05×) and boosts categories Google has never associated with you (3.0×). These multiply together, then Layer 3 blends in the current persona's preferences. The result: a decoy profile that reads like a real person, just not you.
+Example: if you report yourself as a 25-to-34-year-old engineer, Layer 1 suppresses the categories typical of that profile, such as TECHNOLOGY and GAMING, to 0.15×, and boosts distant ones, such as RETIREMENT and PARENTING, to 2.5×. When Layer 2 imports your ad profile and sees Google has tagged you with TECHNOLOGY, it suppresses that category further (0.05×) and boosts categories Google has never associated with you (3.0×). These multiply together, then Layer 3 blends in the current persona's preferences. The result: a decoy profile that reads like a real person, just not you.
 
 ## Modules
 
@@ -85,7 +85,7 @@ Two further limits apply even if that is fixed. Android flags every coordinate f
 
 It is kept, off by default, because the surrounding scaffolding is sound and a future privileged approach could use it. It is not a reason to choose Fauxx.
 
-**Setup:** Android requires you to designate the mock-location app explicitly. Enable Developer Options (Settings → About phone → tap Build Number 7 times), then Developer Options → "Select mock location app" → Fauxx. The Location Spoofing toggle surfaces this dialog on first enable. The Play Store build does not include this module; F-Droid / sideload only.
+**Setup:** Android requires you to designate the mock-location app explicitly. Enable Developer Options (Settings → About phone → tap Build Number 7 times), then Developer Options → "Select mock location app" → Fauxx. The Location Spoofing toggle surfaces this dialog on first enable.
 
 ### 4. Device Identity
 
@@ -134,7 +134,7 @@ Fauxx is built with privacy-first architecture:
 
 ### Prerequisites
 
-- Android SDK API 36 (build tools)
+- Android SDK Platform 37 (the app compiles against API 37 and targets API 36)
 - Kotlin compiler (bundled with Gradle)
 - JDK 21 (LTS, matching the F-Droid buildserver)
 
@@ -221,19 +221,19 @@ Scrollable audit log of all actions with timestamps, types, and details. Export 
 Global controls:
 - **Wi-Fi intensity:** Low (light activity) / Medium (balanced) / High (aggressive) / Max (highest volume)
 - **Mobile data intensity:** a separate Off / Low / Medium / High / Max ladder for mobile data. Off (the default) never touches mobile data; any tier runs the engine on mobile at its own rate. Wi-Fi networks the system reports as metered, a tethered phone hotspot or a network you marked metered in Android's Wi-Fi settings, are governed by this ladder too, so Fauxx does not quietly spend a data allowance it cannot see
-- **Wi-Fi intensity while charging:** Off (the default) / Low / Medium / High / Max. While the phone is plugged in on unmetered Wi-Fi, Fauxx runs at this level instead of the Wi-Fi intensity, so you can keep Fauxx light on battery and let it do more while charging. It only ever raises the rate, so a level at or below your Wi-Fi intensity changes nothing. Mobile data and metered Wi-Fi keep their own ladder whether or not the phone is charging, and active hours, the battery thresholds and Battery Saver still apply. The change takes effect within seconds of plugging in, and the dashboard shows "Charging boost" while it is in effect. After unplugging, the lower rate's hourly cap applies to the past hour's actions, so Fauxx may pause until the hour drains
+- **Wi-Fi intensity while charging:** Off (the default) / Low / Medium / High / Max. While the phone is plugged in on unmetered Wi-Fi, Fauxx runs at this level instead, so it can stay light on battery and do more while charging. It only ever raises the rate. See [How does the charging intensity work?](#how-does-the-charging-intensity-work)
 - **Battery threshold:** Minimum battery % to run actions (Can be adjusted individually while on battery and while charging)
 - **Pause during Battery Saver:** Off by default. On, Fauxx stops while Android's Battery Saver is on and picks up again as soon as it turns off. While paused, its notification stays up and it checks once a minute, so it can resume the moment Battery Saver ends
 - **Active hours:** Time range when actions should run (e.g., 7am–11pm)
 - **Search engines:** Which engines receive synthetic queries. Turning one off spares it entirely. At least two stay active, because real people spread searches across engines and noise from a single one would be easy to filter out
 - **Load images on synthetic pages:** Off by default. On, pages load images like a real browser, so tracking pixels fire and each visit looks normal to the site; off saves a lot of data, since images are most of a page's size, but a browser that never loads images is unusual
-- **Custom DNS for Fauxx:** Off by default. On, the sites Fauxx visits are looked up with a resolver you choose instead of your device's DNS: encrypted DNS (DNS-over-HTTPS: Quad9, Cloudflare, Mullvad, Google, or your own URL) or a plain DNS server by IP address. For your own URL you can also give the server's IP address, so Fauxx never has to look up its name (useful for a resolver on your network, or one your DNS blocks), and, for a self-hosted resolver with a self-signed certificate, skip the certificate check. Fauxx then trusts the certificate it first sees from that server and refuses any other, so an impostor on another network is turned away; if you replace your server's certificate, switch the setting off and on to trust the new one (the dashboard tells you when this is needed). A Pi-hole, NextDNS profile or VPN app that blocks tracker domains then no longer stops Fauxx reaching them. Only Fauxx's own browsing uses it, unless you also turn on **Also use it for DNS noise** (off by default, since DNS noise is meant for your network's and ISP's DNS logs; on, noise goes to the custom resolver while it is working). A plain DNS server is not encrypted, so your network can still see the names. Your own URL can be `http://` when the server is on a private network (give its private IP address, or use a `.lan`, `.local`, `.home.arpa`, `.internal` or `.ts.net` name); its lookups are then unencrypted and go out on whatever network the phone is on, and Fauxx refuses to send them to any public address. If custom DNS stops working, Fauxx falls back to your device's DNS for at least a minute at a time and says so on the dashboard. Turn on **Never fall back to your device's DNS** to make those lookups fail instead: Fauxx's pages then do not load until your resolver answers again, and DNS noise goes to your resolver too
-- **Your searches and sites:** add your own search terms and websites, one at a time or many at once (one per line), such as local news sites and searches in your language when the built-in English, Spanish, French and Russian lists do not match where you live. Each entry sends 5% of search sessions or site visits to your list, up to 30% from six entries on; the built-in lists always carry the rest, so a short personal list never dominates the noise or hammers one site. Your entries are not filed under a category: they are drawn alongside whatever the persona is browsing. Searches pass the harmful-query blocklists of all four languages, not just the active one; sites must be public `http`/`https` addresses (no IP addresses, local network names or embedded passwords) and pass the same domain blocklist and per-site rate limit as the built-in sites. Entries are stored in the encrypted database, never written to the debug log, deleted by **Clear all data**, and not carried by LAN sync. A search from your list shows as `[CUSTOM]` in the Log
+- **Custom DNS for Fauxx:** Off by default. On, the sites Fauxx visits are looked up with a resolver you choose (encrypted DNS-over-HTTPS from Quad9, Cloudflare, Mullvad, Google or your own URL, or a plain DNS server by IP address) instead of your device's DNS, so a Pi-hole, NextDNS profile or VPN app that blocks tracker domains no longer stops Fauxx. Other apps are not affected. See [My Pi-hole, NextDNS or VPN blocks tracker domains](#my-pi-hole-nextdns-or-vpn-blocks-tracker-domains-so-fauxx-cant-reach-them-what-can-i-do) for the options and how fallback works
+- **Your searches and sites:** add your own search terms and websites, such as local news and searches in your language, one at a time or many at once (one per line). They get a capped share of the activity, from 5% with one entry up to 30%, so the built-in lists always carry most of it. See [How do my own searches and sites work?](#how-do-my-own-searches-and-sites-work)
 - **Clear all data:** Destructive button to reset everything
 
 ## Configuration
 
-All configurable values are exposed in the app UI and backed by Room preferences or compile-time constants. Key thresholds:
+User settings are exposed in the app UI and stored in Jetpack DataStore; the thresholds below are compile-time constants. Key thresholds:
 
 - **Per-domain rate limit:** 5 seconds (CrawlListManager)
 - **Action timing:** exponentially distributed gaps around the intensity's average rate (one minute apart on average at Medium), with a short 2 to 30 second follow-up on some same-topic transitions
@@ -331,8 +331,6 @@ Fauxx ships in English (`en`), Spanish (`es`), French (`fr`) and Russian (`ru`).
 7. Run `ANTHROPIC_API_KEY=... python3 scripts/translate_query_banks.py <localeTag>` to populate the per-locale query banks (32 categories). Spot-check a few categories for idiomatic phrasing.
 8. After native-speaker review, bump `BuildConfig.SHIPPED_LOCALES` in `defaultConfig` to include the new tag.
 
-See `.devloop/spikes/multilingual-support.md` for the design and threat model.
-
 ## FAQ
 
 ### What does "Synthetic Activity" on the Dashboard mean?
@@ -365,7 +363,8 @@ Things to know:
 - It covers every site Fauxx's browser loads, including the images, scripts and ads inside a page: the WebView hands each name to the proxy unresolved, and the proxy asks your resolver.
 - By default it falls back. When your resolver is slow or unreachable (three slow or failed lookups in a row, which happens easily over a VPN), Fauxx sends lookups to your device's DNS for at least a minute before trying your resolver again, and says so on the dashboard. **Never fall back to your device's DNS** stops this: lookups then fail, and Fauxx's pages do not load until your resolver answers again. With it on, Fauxx also pauses its browsing whenever its WebView cannot be routed through your resolver, keeps retrying, and says why on the dashboard; on a WebView that cannot route through a proxy at all, Settings keeps the switch reachable so you can turn it off.
 - DNS noise uses your device's DNS on purpose, to fill your network's and ISP's DNS logs, unless you turn on **Also use it for DNS noise** (or never-fall-back, which does the same).
-- If you use your own resolver URL (a NextDNS profile, for example), Fauxx looks up that resolver's own address through its default resolver first, since DoH-bypass blocklists often block those hostnames. Only with fallback allowed is the device's DNS the last resort for that lookup.
+- If you use your own resolver URL (a NextDNS profile, for example), Fauxx looks up that resolver's own address through its default resolver first, since DoH-bypass blocklists often block those hostnames. Only with fallback allowed is the device's DNS the last resort for that lookup. You can also give the server's IP address next to the URL, so Fauxx never has to look up its name at all (useful for a resolver on your network, or one your DNS blocks).
+- For a self-hosted resolver with a self-signed certificate, turn on **Skip certificate check**. Fauxx then trusts the certificate it first sees from that server and refuses any other, so an impostor on another network is turned away. If you replace your server's certificate, switch the setting off and on to trust the new one; the dashboard tells you when this is needed.
 - Your own URL may be `http://` for a resolver on a private network (a self-hosted DoH server behind your VPN, say). Fauxx accepts it when you give the server's private IP address (then the URL may use any name), or when the URL itself names a private IP or a `.lan`, `.local`, `.home.arpa`, `.internal` or `.ts.net` host. It never sends the queries to a public address, but they are not encrypted and go out on whatever network your phone is on, including public Wi-Fi that happens to use the same private range, where anyone on it can read them. A `100.x` (Tailscale) or VPN address only reaches your server while that VPN is connected. Settings says this for as long as an `http://` resolver is in use. With never-fall-back on, give the server's IP address too, since only your device's DNS knows names like `pihole.lan`.
 - If your resolver is only reachable through your VPN, do not exempt Fauxx from the VPN itself; exempt it from the VPN app's DNS filtering only.
 - Plain DNS is not encrypted: your network and ISP can see the names it looks up. It is also often captured by VPN and firewall apps, which then answer in place of your server; Fauxx checks for this (again whenever your network changes) and says so on the dashboard. Encrypted DNS avoids both.
@@ -379,7 +378,7 @@ Layer 2 reads the ad-interest profile the platforms have already built about you
 
 To use it:
 
-- **Export your ad data.** From Google, use [Google Takeout](https://takeout.google.com) and select **"My Ad Center"**. From Facebook, use **Download Your Information** (accountscenter.facebook.com), choose **JSON** format, and include **"Ads and businesses"**. The platform emails you an archive (a ZIP or JSON file).
+- **Export your ad data.** From Google, use [Google Takeout](https://takeout.google.com) and select your advertising data (you can deselect everything else to keep the file small). From Facebook, use **Download Your Information** (accountscenter.facebook.com), choose **JSON** format, and include **"Ads and businesses"**. The platform emails you an archive (a ZIP or JSON file).
 - **Import the file.** On Fauxx's Targeting screen, tap the Google Takeout or Facebook import button and pick the file you downloaded. Fauxx reads the ad-interest categories and applies the away-from weighting.
 - **Nothing leaves your device.** Fauxx never logs in, reads cookies, or contacts the platforms. It only parses the file you give it, on-device.
 - **Re-import occasionally.** Your ad profile drifts over time, so Fauxx reminds you to re-import after about 90 days. There is no background scraping.
@@ -407,6 +406,29 @@ You'll typically see this notification:
 - **After a reboot or an app update,** because Android won't let Fauxx restart its own foreground service from a boot or update event. Fauxx posts the resume notification instead.
 
 Tapping the notification opens Fauxx and restarts protection. Nothing is lost. Your settings, profile, persona, and action log are all persistent.
+
+### How does the charging intensity work?
+
+**Settings → Wi-Fi intensity while charging** (Off by default) sets the rate Fauxx runs at while the phone is plugged in on unmetered Wi-Fi. It only ever raises the rate, so a level at or below your Wi-Fi intensity changes nothing.
+
+- Mobile data and metered Wi-Fi keep their own intensity whether or not the phone is charging.
+- Active hours, the battery thresholds and Battery Saver still apply.
+- It takes effect within seconds of plugging in, and the dashboard shows "Charging boost" while it is in effect.
+- After you unplug, the lower rate's hourly cap counts the past hour's actions, so Fauxx may pause briefly until that hour has passed.
+
+### How do my own searches and sites work?
+
+**Settings → Your searches and sites** lets you add search terms and websites when the built-in English, Spanish, French and Russian lists do not match where you live, such as local news sites and searches in your language.
+
+- **Share of the activity:** each entry sends 5% of search sessions or site visits to your list, up to 30% from six entries on. The built-in lists always carry the rest, so a short personal list never dominates the noise or hammers one site.
+- **No category:** your entries are drawn alongside whatever the persona is browsing.
+- **Safety checks:** searches must pass the harmful-query blocklists of all four languages, not just the active one. Sites must be public `http`/`https` addresses (no IP addresses, local network names or embedded passwords) and pass the same domain blocklist and per-site rate limit as the built-in sites.
+- **Privacy:** entries are stored in the encrypted database, never written to the debug log, deleted by **Clear all data**, and not carried by LAN sync.
+- In the Log, a search from your list is marked `[CUSTOM]`.
+
+### Why not Google Play?
+
+Play's policies disallow Fauxx's location-spoofing and ad-profile-pollution modules, and Play is moving toward requiring its age-verification API, which a no-account privacy tool has no business integrating. The former `play` build flavor has been removed from the source.
 
 ## License
 
@@ -448,10 +470,9 @@ Realistically, Fauxx dilutes at the edge of the identity graph. It is not profil
 
 ## Feedback & Security
 
-Found a bug? Have a suggestion? Security concern?
-
-- Open an issue on GitHub
-- For security issues, please report responsibly
+- **Bugs and feature requests:** open an [issue](https://github.com/digital-grease/fauxx/issues).
+- **Questions and ideas:** use [Discussions](https://github.com/digital-grease/fauxx/discussions).
+- **Security vulnerabilities:** do not open a public issue. Report privately as described in [SECURITY.md](SECURITY.md).
 
 ---
 
