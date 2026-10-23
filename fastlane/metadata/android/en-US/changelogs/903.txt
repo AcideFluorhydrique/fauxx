@@ -1,0 +1,4 @@
+• Fixed: after finishing the welcome screens with answers, they came back every time Fauxx was opened (#366).
+• New: enter the ad categories Google shows you in My Ad Center (Targeting, Layer 2). Google's Takeout may not include them, so this is the most complete source. A preview shows which Fauxx category each line matches before you save (#374).
+• Fixed: imported ad categories such as "Skin Care" and "Careers" were matched to the wrong Fauxx category.
+• Corrected the store description and README: personas change every 30 to 90 days, not every week.

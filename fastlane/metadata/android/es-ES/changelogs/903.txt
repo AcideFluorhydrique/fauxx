@@ -1,0 +1,4 @@
+• Corregido: tras completar las pantallas de bienvenida con respuestas, volvían a aparecer cada vez que se abría Fauxx (#366).
+• Nuevo: introduce las categorías publicitarias que Google te muestra en My Ad Center (Segmentación, Capa 2). Puede que Google Takeout no las incluya, así que es la fuente más completa. Una vista previa muestra con qué categoría de Fauxx coincide cada línea antes de guardar (#374).
+• Corregido: algunas categorías publicitarias importadas, como «Skin Care» y «Careers», se asignaban a la categoría de Fauxx equivocada.
+• Corregidos la descripción de la tienda y el README: las personas cambian cada 30 a 90 días, no cada semana.
