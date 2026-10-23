@@ -18,10 +18,12 @@ import com.fauxx.targeting.layer1.Profession
 import com.fauxx.targeting.layer1.Region
 import com.fauxx.targeting.layer1.UserDemographicProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class OnboardingUiState(
@@ -32,7 +34,9 @@ data class OnboardingUiState(
     val customInterests: List<String> = emptyList(),
     val customInterestMappings: List<InterestMapping> = emptyList(),
     val profession: Profession? = null,
-    val region: Region? = null
+    val region: Region? = null,
+    /** True while [OnboardingViewModel.saveAndFinish] is writing; the screen disables its buttons. */
+    val saving: Boolean = false
 )
 
 @HiltViewModel
@@ -110,39 +114,51 @@ class OnboardingViewModel @Inject constructor(
 
     fun skip() { _uiState.value = _uiState.value.copy(step = _uiState.value.step + 1) }
 
-    fun saveAndFinish() {
+    /**
+     * Saves the answers and marks onboarding completed, then calls [onSaved] so the screen can
+     * navigate away. Navigating first cleared this ViewModel mid-save and cancelled the write of
+     * the completed flag, so the welcome screen came back on every launch (#366). The writes also
+     * run NonCancellable, so leaving the screen any other way cannot cut them short.
+     */
+    fun saveAndFinish(onSaved: () -> Unit = {}) {
+        if (_uiState.value.saving) return
+        _uiState.value = _uiState.value.copy(saving = true)
         viewModelScope.launch {
-            val state = _uiState.value
-            val hasData = state.ageRange != null || state.gender != null ||
-                state.profession != null || state.region != null ||
-                state.interests.isNotEmpty() || state.customInterests.isNotEmpty()
-
-            // First run only: this screen also edits the profile later (#29), and an edit must
-            // not switch Layer 1 back on for a user who turned it off.
-            val firstRun = dataStore.data.first()[PreferenceKeys.ONBOARDING_COMPLETED] != true
-
-            if (hasData) {
-                dao.upsert(
-                    UserDemographicProfile(
-                        ageRange = state.ageRange,
-                        gender = state.gender,
-                        profession = state.profession,
-                        region = state.region,
-                        interestsJson = UserDemographicProfile.serializeInterests(state.interests),
-                        customInterestsJson = if (state.customInterests.isNotEmpty())
-                            UserDemographicProfile.serializeCustomInterests(state.customInterests)
-                        else null
-                    )
-                )
-                if (firstRun) {
-                    // Answers given at first launch are meant to steer the decoys. Layer 1 used to
-                    // stay off until the user found its switch on the Targeting screen, so the
-                    // answers did nothing.
-                    targetingEngine.setLayer1Enabled(true)
-                    profileRepo.updateProfile { it.copy(layer1Enabled = true) }
-                }
-            }
-            dataStore.edit { it[PreferenceKeys.ONBOARDING_COMPLETED] = true }
+            withContext(NonCancellable) { save(_uiState.value) }
+            onSaved()
         }
+    }
+
+    private suspend fun save(state: OnboardingUiState) {
+        val hasData = state.ageRange != null || state.gender != null ||
+            state.profession != null || state.region != null ||
+            state.interests.isNotEmpty() || state.customInterests.isNotEmpty()
+
+        // First run only: this screen also edits the profile later (#29), and an edit must
+        // not switch Layer 1 back on for a user who turned it off.
+        val firstRun = dataStore.data.first()[PreferenceKeys.ONBOARDING_COMPLETED] != true
+
+        if (hasData) {
+            dao.upsert(
+                UserDemographicProfile(
+                    ageRange = state.ageRange,
+                    gender = state.gender,
+                    profession = state.profession,
+                    region = state.region,
+                    interestsJson = UserDemographicProfile.serializeInterests(state.interests),
+                    customInterestsJson = if (state.customInterests.isNotEmpty())
+                        UserDemographicProfile.serializeCustomInterests(state.customInterests)
+                    else null
+                )
+            )
+            if (firstRun) {
+                // Answers given at first launch are meant to steer the decoys. Layer 1 used to
+                // stay off until the user found its switch on the Targeting screen, so the
+                // answers did nothing.
+                targetingEngine.setLayer1Enabled(true)
+                profileRepo.updateProfile { it.copy(layer1Enabled = true) }
+            }
+        }
+        dataStore.edit { it[PreferenceKeys.ONBOARDING_COMPLETED] = true }
     }
 }

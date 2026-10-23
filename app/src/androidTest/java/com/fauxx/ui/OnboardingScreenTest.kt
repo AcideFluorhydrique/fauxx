@@ -8,15 +8,24 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.fauxx.di.PreferenceKeys
+import com.fauxx.engine.PoisonProfileRepository
 import com.fauxx.ui.screens.OnboardingScreen
 import com.fauxx.ui.theme.FauxxTheme
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import javax.inject.Inject
 
 /**
  * Instrumented UI tests for [OnboardingScreen].
@@ -28,6 +37,7 @@ import org.junit.runner.RunWith
  * - The Done step shows the final completion step
  *
  * - Skip / Next stay on screen without scrolling on a small (320dp) screen (#347)
+ * - Done with answers has saved the completed flag by the time the screen is told to leave (#366)
  *
  * Note: only the per-step content of [OnboardingScreen] scrolls; the Skip / Next
  * navigation Row is pinned below it, outside the scroll container. So the buttons
@@ -43,6 +53,9 @@ class OnboardingScreenTest {
 
     @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<HiltTestActivity>()
+
+    @Inject lateinit var dataStore: DataStore<Preferences>
+    @Inject lateinit var profileRepo: PoisonProfileRepository
 
     @Before
     fun setUp() {
@@ -82,7 +95,8 @@ class OnboardingScreenTest {
         // Region is last step — "Skip All" should finish
         composeRule.onNodeWithText("Skip All").performClick()
 
-        assert(finished) { "onFinish was not called after skipping all steps" }
+        // Finishing waits for the save (#366), so onFinish comes asynchronously.
+        composeRule.waitUntil(5_000) { finished }
     }
 
     @Test
@@ -133,7 +147,7 @@ class OnboardingScreenTest {
         // Click Done
         composeRule.onNodeWithText("Done").performClick()
 
-        assert(finished) { "onFinish was not called after completing all steps" }
+        composeRule.waitUntil(5_000) { finished }
     }
 
     /**
@@ -161,5 +175,44 @@ class OnboardingScreenTest {
         // Region, the last step, relabels the pair Skip All / Done.
         composeRule.onNodeWithText("Done").assertIsDisplayed()
         composeRule.onNodeWithText("Skip All").assertIsDisplayed()
+    }
+
+    /**
+     * Regression test for #366: the welcome screen came back on every launch because Done
+     * navigated away before the save finished, and leaving the screen cancelled the write of the
+     * completed flag. Answering a question takes the slow path (profile row, Layer 1 switch).
+     * The flag must already be saved when onFinish runs, since that is when the screen goes.
+     */
+    @Test
+    fun doneWithAnswers_savesCompletedFlagBeforeLeaving() {
+        val layer1Before = profileRepo.getProfile().layer1Enabled
+        runBlocking { dataStore.edit { it.remove(PreferenceKeys.ONBOARDING_COMPLETED) } }
+        var flagWhenFinished: Boolean? = null
+        var finished = false
+        try {
+            composeRule.setContent {
+                FauxxTheme {
+                    OnboardingScreen(onFinish = {
+                        flagWhenFinished = runBlocking {
+                            dataStore.data.first()[PreferenceKeys.ONBOARDING_COMPLETED]
+                        }
+                        finished = true
+                    })
+                }
+            }
+
+            composeRule.onNodeWithText("Next").performClick()
+            composeRule.onNodeWithText("25–34").performClick()
+            repeat(4) { composeRule.onNodeWithText("Next").performClick() }
+            composeRule.onNodeWithText("Done").performClick()
+
+            composeRule.waitUntil(5_000) { finished }
+            assertEquals(true, flagWhenFinished)
+        } finally {
+            runBlocking {
+                dataStore.edit { it[PreferenceKeys.ONBOARDING_COMPLETED] = true }
+                profileRepo.updateProfile { it.copy(layer1Enabled = layer1Before) }
+            }
+        }
     }
 }

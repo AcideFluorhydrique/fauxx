@@ -4,6 +4,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.fauxx.data.model.PoisonProfile
 import com.fauxx.di.PreferenceKeys
 import com.fauxx.engine.PoisonProfileRepository
@@ -18,6 +22,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +93,51 @@ class OnboardingViewModelTest {
         assertFalse(profile.value.layer1Enabled)
         verify(exactly = 0) { targetingEngine.setLayer1Enabled(any()) }
         assertEquals(true, prefs.data.value[PreferenceKeys.ONBOARDING_COMPLETED])
+    }
+
+    /**
+     * #366: Done navigated away while the save was still running. Leaving the screen clears the
+     * ViewModel, which cancelled viewModelScope before the completed flag was written, so the
+     * answers were saved but the welcome screen came back on every launch. On a phone the profile
+     * write (first open of the encrypted database) outlasts the screen transition.
+     */
+    @Test
+    fun `leaving the screen mid-save still marks onboarding completed`() = runTest(testDispatcher) {
+        val prefs = FakePrefs()
+        val upsertGate = CompletableDeferred<Unit>()
+        coEvery { dao.upsert(any()) } coAnswers { upsertGate.await() }
+        val store = ViewModelStore()
+        val vm = ViewModelProvider.create(store, viewModelFactory {
+            initializer { viewModel(prefs) }
+        })[OnboardingViewModel::class]
+        vm.setAgeRange(AgeRange.AGE_25_34)
+
+        vm.saveAndFinish()
+        store.clear()
+        upsertGate.complete(Unit)
+
+        assertEquals(true, prefs.data.value[PreferenceKeys.ONBOARDING_COMPLETED])
+        assertTrue(profile.value.layer1Enabled)
+    }
+
+    @Test
+    fun `the screen is told to leave only after the save is done`() = runTest(testDispatcher) {
+        val prefs = FakePrefs()
+        val upsertGate = CompletableDeferred<Unit>()
+        coEvery { dao.upsert(any()) } coAnswers { upsertGate.await() }
+        val vm = viewModel(prefs)
+        vm.setAgeRange(AgeRange.AGE_25_34)
+        var finished = false
+
+        vm.saveAndFinish { finished = true }
+        vm.saveAndFinish { error("a second tap must not save again") }
+
+        assertFalse(finished)
+        assertTrue(vm.uiState.value.saving)
+        upsertGate.complete(Unit)
+        assertTrue(finished)
+        assertEquals(true, prefs.data.value[PreferenceKeys.ONBOARDING_COMPLETED])
+        coVerify(exactly = 1) { dao.upsert(any()) }
     }
 
     @Test

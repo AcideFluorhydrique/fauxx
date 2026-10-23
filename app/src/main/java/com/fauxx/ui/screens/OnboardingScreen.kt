@@ -130,19 +130,19 @@ fun OnboardingScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Navigate only once the save is done: leaving the screen clears the ViewModel (#366).
             OutlinedButton(
                 onClick = {
                     if (isLastStep) {
-                        viewModel.saveAndFinish()
-                        onFinish()
+                        viewModel.saveAndFinish(onFinish)
                     } else {
                         viewModel.skip()
                         if (viewModel.uiState.value.step > 5) {
-                            viewModel.saveAndFinish()
-                            onFinish()
+                            viewModel.saveAndFinish(onFinish)
                         }
                     }
                 },
+                enabled = !uiState.saving,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(if (isLastStep) R.string.onboarding_skip_all else R.string.onboarding_skip))
@@ -151,12 +151,12 @@ fun OnboardingScreen(
             Button(
                 onClick = {
                     if (isLastStep) {
-                        viewModel.saveAndFinish()
-                        onFinish()
+                        viewModel.saveAndFinish(onFinish)
                     } else {
                         viewModel.next()
                     }
                 },
+                enabled = !uiState.saving,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(if (isLastStep) R.string.onboarding_done else R.string.onboarding_next))
