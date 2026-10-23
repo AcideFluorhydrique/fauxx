@@ -55,6 +55,35 @@ class CategoryMapperTest {
         assertEquals(CategoryPool.TECHNOLOGY, mapper.map("software development tools"))
     }
 
+    /**
+     * Keywords used to match inside words, so a pasted My Ad Center list (#374) was mapped wrong:
+     * "car" made "Skin Care" and "Careers" AUTOMOTIVE, "pet" made "Competitions" PETS, and a
+     * fragment like "me" matched HOME_IMPROVEMENT.
+     */
+    @Test
+    fun `keywords match whole words, not fragments inside other words`() {
+        val mapper = createMapper()
+        assertNull(mapper.map("Skin Care"))
+        assertNull(mapper.map("Careers"))
+        assertNull(mapper.map("Competitions"))
+        assertNull(mapper.map("Catering"))
+        assertNull(mapper.map("me"))
+        assertNull(mapper.map("Carpets"))
+    }
+
+    @Test
+    fun `keywords still match plurals and longer words that start with them`() {
+        val mapper = createMapper()
+        assertEquals(CategoryPool.AUTOMOTIVE, mapper.map("Cars"))
+        assertEquals(CategoryPool.AUTOMOTIVE, mapper.map("Autos & Vehicles"))
+        assertEquals(CategoryPool.PETS, mapper.map("Cats"))
+        assertEquals(CategoryPool.TECHNOLOGY, mapper.map("Technology News"))
+        assertEquals(CategoryPool.ACADEMIC, mapper.map("Jobs & Education"))
+        assertEquals(CategoryPool.SPORTS, mapper.map("Sporting Goods"))
+        assertEquals(CategoryPool.REAL_ESTATE, mapper.map("Real Estate Listings"))
+        assertEquals(CategoryPool.PETS, mapper.map("Pets & Animals"))
+    }
+
     @Test
     fun `mapAll returns correct set and skips unknowns`() {
         val json = """{"Sports": "SPORTS"}"""

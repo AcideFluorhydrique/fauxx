@@ -6,15 +6,19 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.fauxx.engine.PoisonProfileRepository
 import com.fauxx.ui.screens.TargetingScreen
 import com.fauxx.ui.theme.FauxxTheme
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import javax.inject.Inject
 
 /**
  * Instrumented UI tests for [TargetingScreen].
@@ -25,6 +29,7 @@ import org.junit.runner.RunWith
  * - Tapping "Clear My Profile" shows a confirmation dialog
  * - Confirmation dialog has Cancel and Clear actions
  * - Layer labels are displayed
+ * - Categories pasted from My Ad Center are previewed and saved (#374)
  *
  * Note: [TargetingScreen]'s root Column uses `.verticalScroll(...)`, so any element
  * below the first card (Layer 2/3, "Rotate Now", "Clear My Profile") must be brought
@@ -41,6 +46,8 @@ class TargetingScreenTest {
 
     @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<HiltTestActivity>()
+
+    @Inject lateinit var profileRepo: PoisonProfileRepository
 
     @Before
     fun setUp() {
@@ -124,5 +131,43 @@ class TargetingScreenTest {
             composeRule.onAllNodesWithText("Rotate Now").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText("Rotate Now").performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * #374: the My Ad Center entry previews which Fauxx category each line maps to, ignores
+     * lines that match none, and saves the result as a Google import.
+     */
+    @Test
+    fun myAdCenterEntry_previewsAndSavesPastedCategories() {
+        val layer2Before = profileRepo.getProfile().layer2Enabled
+        runBlocking { profileRepo.updateProfile { it.copy(layer2Enabled = true) } }
+        try {
+            composeRule.setContent {
+                FauxxTheme {
+                    TargetingScreen()
+                }
+            }
+            val button = "Enter categories from My Ad Center"
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(button).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(button).performScrollTo().performClick()
+            composeRule.onNodeWithText("Categories from My Ad Center").assertIsDisplayed()
+
+            composeRule.onNodeWithText("Categories").performTextInput("Video Games\nSkin Care")
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText("Matched (1): Gaming").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText("No matching Fauxx category, ignored: Skin Care").assertIsDisplayed()
+
+            composeRule.onNodeWithText("Save").performClick()
+            composeRule.onNodeWithText("Categories from My Ad Center").assertDoesNotExist()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText("Imported 1 category from My Ad Center.", substring = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            runBlocking { profileRepo.updateProfile { it.copy(layer2Enabled = layer2Before) } }
+        }
     }
 }

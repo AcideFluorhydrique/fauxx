@@ -17,7 +17,10 @@ import com.fauxx.targeting.layer2.SnapshotSeries
  */
 enum class ImportSource(val platformId: String, val displayName: String) {
     GOOGLE_TAKEOUT("google", "Google Takeout"),
-    FACEBOOK_DYI("facebook", "Facebook DYI")
+    FACEBOOK_DYI("facebook", "Facebook DYI"),
+
+    /** Categories pasted from My Ad Center (#374). Shares "google", so it replaces a Takeout import. */
+    GOOGLE_MY_AD_CENTER("google", "My Ad Center")
 }
 
 /**

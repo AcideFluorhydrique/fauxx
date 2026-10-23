@@ -29,6 +29,8 @@ import com.fauxx.targeting.layer2.importers.FacebookDyiImporter
 import com.fauxx.targeting.layer2.importers.GoogleTakeoutImporter
 import com.fauxx.targeting.layer2.importers.ImportResult
 import com.fauxx.targeting.layer2.importers.ImportSource
+import com.fauxx.targeting.layer2.importers.MyAdCenterCategoryImporter
+import com.fauxx.targeting.layer2.importers.PastedCategory
 import com.fauxx.targeting.layer3.PersonaHistoryDao
 import com.fauxx.targeting.layer3.PersonaRotationLayer
 import com.fauxx.util.Clock
@@ -99,6 +101,7 @@ class TargetingViewModel @Inject constructor(
     private val personaLayer: PersonaRotationLayer,
     private val googleTakeoutImporter: GoogleTakeoutImporter,
     private val facebookDyiImporter: FacebookDyiImporter,
+    private val myAdCenterImporter: MyAdCenterCategoryImporter,
     @ApplicationContext private val context: Context,
     private val encryptedFileTree: EncryptedFileTree,
     private val markovGenerator: MarkovQueryGenerator,
@@ -171,15 +174,25 @@ class TargetingViewModel @Inject constructor(
     /** Begin a Facebook DYI import. See [importGoogleTakeout] for behavior. */
     fun importFacebookDyi(uri: Uri) = runImport(uri, facebookDyiImporter)
 
-    private fun runImport(uri: Uri, importer: AdProfileImporter) {
+    /** Save categories the user pasted or typed from My Ad Center (#374). */
+    fun importMyAdCenter(text: String) =
+        runImport(myAdCenterImporter.source) { series -> myAdCenterImporter.import(text, series) }
+
+    /** How each line of [text] would map, for the entry dialog's live preview. */
+    fun previewMyAdCenter(text: String): List<PastedCategory> = myAdCenterImporter.preview(text)
+
+    private fun runImport(uri: Uri, importer: AdProfileImporter) =
+        runImport(importer.source) { series -> importer.import(uri, series) }
+
+    private fun runImport(source: ImportSource, import: suspend (SnapshotSeries) -> ImportResult) {
         if (_state.value.importInProgress != null) return
         val series = if (_state.value.importAsControl) SnapshotSeries.CONTROL else SnapshotSeries.POISONED
         _state.value = _state.value.copy(
-            importInProgress = importer.source,
+            importInProgress = source,
             lastImportResult = null
         )
         viewModelScope.launch {
-            val result = importer.import(uri, series)
+            val result = import(series)
             _state.value = _state.value.copy(
                 importInProgress = null,
                 lastImportResult = result

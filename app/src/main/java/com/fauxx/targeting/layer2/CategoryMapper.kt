@@ -35,11 +35,14 @@ class CategoryMapper @Inject constructor(
             return runCatching { CategoryPool.valueOf(exactMatch) }.getOrNull()
         }
 
-        // 2. Fuzzy keyword matching against CategoryPool names
+        // 2. Fuzzy matching against CategoryPool names, on whole words: "Carpets" is not PETS,
+        // and a short fragment like "me" is not HOME_IMPROVEMENT.
         val lowerInput = normalized.lowercase()
         for (category in CategoryPool.values()) {
             val categoryWords = category.name.lowercase().replace("_", " ")
-            if (lowerInput.contains(categoryWords) || categoryWords.contains(lowerInput)) {
+            if (wholeWords(categoryWords, plural = true).containsMatchIn(lowerInput) ||
+                (lowerInput.length >= 4 && wholeWords(lowerInput, plural = false).containsMatchIn(categoryWords))
+            ) {
                 return category
             }
         }
@@ -59,39 +62,60 @@ class CategoryMapper @Inject constructor(
     fun mapAll(platformStrings: Collection<String>): Set<CategoryPool> =
         platformStrings.mapNotNull { map(it) }.toSet()
 
-    private fun applyHeuristics(lower: String): CategoryPool? = when {
-        lower.contains("game") || lower.contains("gaming") -> CategoryPool.GAMING
-        lower.contains("health") || lower.contains("medical") || lower.contains("doctor") -> CategoryPool.MEDICAL
-        lower.contains("sport") || lower.contains("fitness") || lower.contains("exercise") -> CategoryPool.SPORTS
-        lower.contains("travel") || lower.contains("vacation") || lower.contains("hotel") -> CategoryPool.TRAVEL
-        lower.contains("food") || lower.contains("recipe") || lower.contains("restaurant") -> CategoryPool.FOOD
-        lower.contains("tech") || lower.contains("software") || lower.contains("computer") -> CategoryPool.TECHNOLOGY
-        lower.contains("fashion") || lower.contains("clothing") || lower.contains("apparel") -> CategoryPool.FASHION
-        lower.contains("finance") || lower.contains("invest") || lower.contains("stock") -> CategoryPool.FINANCE
-        lower.contains("parent") || lower.contains("baby") || lower.contains("child") -> CategoryPool.PARENTING
-        lower.contains("auto") || lower.contains("car") || lower.contains("vehicle") -> CategoryPool.AUTOMOTIVE
-        lower.contains("home") || lower.contains("garden") || lower.contains("house") -> CategoryPool.HOME_IMPROVEMENT
-        lower.contains("music") || lower.contains("concert") || lower.contains("album") -> CategoryPool.MUSIC
-        lower.contains("beauty") || lower.contains("cosmetic") || lower.contains("makeup") -> CategoryPool.BEAUTY
-        lower.contains("cook") || lower.contains("baking") || lower.contains("kitchen") -> CategoryPool.COOKING
-        lower.contains("real estate") || lower.contains("property") || lower.contains("mortgage") -> CategoryPool.REAL_ESTATE
-        lower.contains("retire") || lower.contains("pension") || lower.contains("senior") -> CategoryPool.RETIREMENT
-        lower.contains("legal") || lower.contains("lawyer") || lower.contains("attorney") -> CategoryPool.LEGAL
-        lower.contains("farm") || lower.contains("agriculture") || lower.contains("crop") -> CategoryPool.AGRICULTURE
-        lower.contains("educat") || lower.contains("academic") || lower.contains("college") -> CategoryPool.ACADEMIC
-        lower.contains("pet") || lower.contains("dog") || lower.contains("cat") -> CategoryPool.PETS
-        lower.contains("entertain") || lower.contains("movie") || lower.contains("film") -> CategoryPool.ENTERTAINMENT
-        lower.contains("science") || lower.contains("research") || lower.contains("lab") -> CategoryPool.SCIENCE
-        lower.contains("business") || lower.contains("entrepreneur") || lower.contains("startup") -> CategoryPool.BUSINESS
-        lower.contains("hiking") || lower.contains("camping") || lower.contains("fishing") || lower.contains("outdoor") || lower.contains("hunting") -> CategoryPool.OUTDOOR_RECREATION
-        lower.contains("craft") || lower.contains("knitting") || lower.contains("pottery") || lower.contains("quilt") || lower.contains("scrapbook") -> CategoryPool.CRAFTS
-        lower.contains("history") || lower.contains("museum") || lower.contains("genealogy") || lower.contains("antique") || lower.contains("historical") -> CategoryPool.HISTORY
-        lower.contains("climate") || lower.contains("sustainability") || lower.contains("conservation") || lower.contains("renewable") || lower.contains("environment") -> CategoryPool.ENVIRONMENT
-        lower.contains("military") || lower.contains("veteran") || lower.contains("defense") || lower.contains("army") || lower.contains("navy") -> CategoryPool.MILITARY_DEFENSE
-        lower.contains("meditation") || lower.contains("astrology") || lower.contains("crystal") || lower.contains("holistic") || lower.contains("essential oil") -> CategoryPool.WELLNESS_ALTERNATIVE
-        lower.contains("dating") || lower.contains("relationship") || lower.contains("wedding") || lower.contains("marriage") || lower.contains("breakup") -> CategoryPool.RELATIONSHIPS_DATING
-        else -> null
+    private fun applyHeuristics(lower: String): CategoryPool? {
+        val words = lower.split(NON_LETTERS).filter { it.isNotEmpty() }
+        fun has(vararg keywords: String) = keywords.any { matchesKeyword(lower, words, it) }
+        return when {
+            has("game", "gaming") -> CategoryPool.GAMING
+            has("health", "medical", "doctor") -> CategoryPool.MEDICAL
+            has("sport", "fitness", "exercise") -> CategoryPool.SPORTS
+            has("travel", "vacation", "hotel") -> CategoryPool.TRAVEL
+            has("food", "recipe", "restaurant") -> CategoryPool.FOOD
+            has("tech", "software", "computer") -> CategoryPool.TECHNOLOGY
+            has("fashion", "clothing", "apparel") -> CategoryPool.FASHION
+            has("finance", "invest", "stock") -> CategoryPool.FINANCE
+            has("parent", "baby", "child") -> CategoryPool.PARENTING
+            has("auto", "car", "vehicle") -> CategoryPool.AUTOMOTIVE
+            has("home", "garden", "house") -> CategoryPool.HOME_IMPROVEMENT
+            has("music", "concert", "album") -> CategoryPool.MUSIC
+            has("beauty", "cosmetic", "makeup") -> CategoryPool.BEAUTY
+            has("cook", "baking", "kitchen") -> CategoryPool.COOKING
+            has("real estate", "property", "mortgage") -> CategoryPool.REAL_ESTATE
+            has("retire", "pension", "senior") -> CategoryPool.RETIREMENT
+            has("legal", "lawyer", "attorney") -> CategoryPool.LEGAL
+            has("farm", "agriculture", "crop") -> CategoryPool.AGRICULTURE
+            has("educat", "academic", "college") -> CategoryPool.ACADEMIC
+            has("pet", "dog", "cat") -> CategoryPool.PETS
+            has("entertain", "movie", "film") -> CategoryPool.ENTERTAINMENT
+            has("science", "research", "lab") -> CategoryPool.SCIENCE
+            has("business", "entrepreneur", "startup") -> CategoryPool.BUSINESS
+            has("hiking", "camping", "fishing", "outdoor", "hunting") -> CategoryPool.OUTDOOR_RECREATION
+            has("craft", "knitting", "pottery", "quilt", "scrapbook") -> CategoryPool.CRAFTS
+            has("history", "museum", "genealogy", "antique", "historical") -> CategoryPool.HISTORY
+            has("climate", "sustainability", "conservation", "renewable", "environment") -> CategoryPool.ENVIRONMENT
+            has("military", "veteran", "defense", "army", "navy") -> CategoryPool.MILITARY_DEFENSE
+            has("meditation", "astrology", "crystal", "holistic", "essential oil") -> CategoryPool.WELLNESS_ALTERNATIVE
+            has("dating", "relationship", "wedding", "marriage", "breakup") -> CategoryPool.RELATIONSHIPS_DATING
+            else -> null
+        }
     }
+
+    /**
+     * A keyword matches a whole word, its plural, or, for keywords of four letters or more, the
+     * start of a word: "educat" finds "education" and "tech" finds "technology", but "car" does
+     * not find "Skin Care" or "Careers", and "pet" does not find "Competitions". A keyword with a
+     * space matches as a phrase.
+     */
+    private fun matchesKeyword(lower: String, words: List<String>, keyword: String): Boolean {
+        if (' ' in keyword) return lower.contains(keyword)
+        return words.any { word ->
+            word == keyword || word == keyword + "s" || (keyword.length >= 4 && word.startsWith(keyword))
+        }
+    }
+
+    /** [phrase] as whole words, optionally with a trailing "s" ("sport" finds "sports"). */
+    private fun wholeWords(phrase: String, plural: Boolean): Regex =
+        Regex("(?<![\\p{L}])" + Regex.escape(phrase) + (if (plural) "s?" else "") + "(?![\\p{L}])")
 
     private fun loadExactMap(): Map<String, String> {
         return try {
@@ -103,5 +127,9 @@ class CategoryMapper @Inject constructor(
             Timber.e(e, "Failed to load platform_category_map.json")
             emptyMap()
         }
+    }
+
+    private companion object {
+        val NON_LETTERS = Regex("[^\\p{L}]+")
     }
 }
