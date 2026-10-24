@@ -1,0 +1,4 @@
+• Corrigé : après avoir terminé les écrans d'accueil en répondant aux questions, ils revenaient à chaque ouverture de Fauxx (#366).
+• Nouveau : saisissez les catégories publicitaires que Google vous montre dans My Ad Center (Ciblage, Couche 2). Google Takeout peut ne pas les inclure, c'est donc la source la plus complète. Un aperçu montre à quelle catégorie Fauxx correspond chaque ligne avant d'enregistrer (#374).
+• Corrigé : certaines catégories publicitaires importées, comme « Skin Care » et « Careers », étaient associées à la mauvaise catégorie Fauxx.
+• Description de la boutique et README corrigés : les personas changent tous les 30 à 90 jours, pas chaque semaine.
